@@ -158,6 +158,8 @@ func (ccm *CLPACommitteeModule) MsgSendingControl() {
 			ccm.sl.Slog.Println("Next CLPA epoch begins. ")
 		}
 
+		ccm.sl.Slog.Printf("here nowDataNum: %v, dataTotalNum: %v\n", ccm.nowDataNum, ccm.dataTotalNum)
+
 		if ccm.nowDataNum == ccm.dataTotalNum {
 			break
 		}
@@ -166,7 +168,9 @@ func (ccm *CLPACommitteeModule) MsgSendingControl() {
 	// all transactions are sent. keep sending partition message...
 	for !ccm.Ss.GapEnough() { // wait all txs to be handled
 		time.Sleep(time.Second)
-		if time.Since(ccm.clpaLastRunningTime) >= time.Duration(ccm.clpaFreq)*time.Second {
+		ccm.sl.Slog.Println("here fffffffffffffffffffffffff")
+		if params.ShardNum > 1 && time.Since(ccm.clpaLastRunningTime) >= time.Duration(ccm.clpaFreq)*time.Second {
+			ccm.sl.Slog.Println("here iiiiiiiiiiiiiiiiiiiiiii")
 			ccm.clpaLock.Lock()
 			clpaCnt++
 			mmap, _ := ccm.clpaGraph.CLPA_Partition()
@@ -184,6 +188,7 @@ func (ccm *CLPACommitteeModule) MsgSendingControl() {
 			ccm.clpaLastRunningTime = time.Now()
 		}
 	}
+	ccm.sl.Slog.Println("here after for")
 }
 
 func (ccm *CLPACommitteeModule) clpaMapSend(m map[string]uint64) {

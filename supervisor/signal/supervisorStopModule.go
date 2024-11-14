@@ -1,6 +1,7 @@
 package signal
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -38,5 +39,6 @@ func (ss *StopSignal) StopGap_Reset() {
 func (ss *StopSignal) GapEnough() bool {
 	ss.stoplock.Lock()
 	defer ss.stoplock.Unlock()
+	fmt.Printf("stopGap: %v, stopThreshold %v\n", ss.stopGap, ss.stopThreshold)
 	return ss.stopGap >= ss.stopThreshold
 }

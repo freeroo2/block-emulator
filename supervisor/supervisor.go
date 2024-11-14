@@ -101,8 +101,10 @@ func (d *Supervisor) handleBlockInfos(content []byte) {
 	}
 	// StopSignal check
 	if bim.BlockBodyLength == 0 {
+		d.sl.Slog.Println("here +++++++++++++++++")
 		d.Ss.StopGap_Inc()
 	} else {
+		d.sl.Slog.Println("here ----------------")
 		d.Ss.StopGap_Reset()
 	}
 
@@ -120,7 +122,9 @@ func (d *Supervisor) handleBlockInfos(content []byte) {
 func (d *Supervisor) SupervisorTxHandling() {
 	d.comMod.MsgSendingControl()
 	// TxHandling is end
+	d.sl.Slog.Println("here 1111111111111111111")
 	for !d.Ss.GapEnough() { // wait all txs to be handled
+		d.sl.Slog.Println("here 2222222222222")
 		time.Sleep(time.Second)
 	}
 	// send stop message
