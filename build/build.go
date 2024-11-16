@@ -2,9 +2,12 @@ package build
 
 import (
 	"blockEmulator/consensus_shard/pbft_all"
+	demis "blockEmulator/de-mis"
+	"blockEmulator/message"
 	"blockEmulator/networks"
 	"blockEmulator/params"
 	"blockEmulator/supervisor"
+	"fmt"
 	"log"
 	"time"
 )
@@ -44,6 +47,20 @@ func initConfig(nid, nnm, sid, snm uint64) *params.ChainConfig {
 	return pcc
 }
 
+func initDENodeConfig(nid, sid uint64) *params.DENodeConfig {
+	// Read the contents of domainConfig.json
+	domainMap := readDomainInfo(fmt.Sprintf("./nodes/S%d/N%d/domainConfig.json", sid, nid))
+	fmt.Println(domainMap)
+
+	pcc := &params.DENodeConfig{
+		Prefix:       "",
+		Addr:         params.IPmap_nodeTable[sid][nid],
+		ParentMap:    make(map[string]string),
+		ChildrenMap:  make(map[string]string),
+	}
+	return pcc
+}
+
 func BuildSupervisor(nnm, snm uint64) {
 	methodID := params.ConsensusMethod
 	var measureMod []string
@@ -63,7 +80,14 @@ func BuildSupervisor(nnm, snm uint64) {
 
 func BuildNewPbftNode(nid, nnm, sid, snm uint64) {
 	methodID := params.ConsensusMethod
-	worker := pbft_all.NewPbftNode(sid, nid, initConfig(nid, nnm, sid, snm), params.CommitteeMethod[methodID])
+	deCh := make(chan *message.ResolveMessage, 1024)
+	worker := pbft_all.NewPbftNode(sid, nid, initConfig(nid, nnm, sid, snm), params.CommitteeMethod[methodID], deCh)
+	deNode := demis.NewDENode(initDENodeConfig(nid, sid), deCh)
+	// ywb 这里nid是本节点的id，sid是本节点所在分片的id，可以根据这个去读取指定目录的domain的配置文件
 	go worker.TcpListen()
+
+	// ywb 启动一个goroutine，用来处理resolve消息
+	go deNode.Start()
+
 	worker.Propose()
 }

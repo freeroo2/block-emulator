@@ -13,6 +13,7 @@ import (
 type CLPARelayOutsideModule struct {
 	cdm      *dataSupport.Data_supportCLPA
 	pbftNode *PbftConsensusNode
+	dNodeCh  chan *message.ResolveMessage
 }
 
 func (crom *CLPARelayOutsideModule) HandleMessageOutsidePBFT(msgType message.MessageType, content []byte) bool {
@@ -23,7 +24,8 @@ func (crom *CLPARelayOutsideModule) HandleMessageOutsidePBFT(msgType message.Mes
 		crom.handleRelayWithProof(content)
 	case message.CInject:
 		crom.handleInjectTx(content)
-
+	case message.CResolve:
+		crom.handleResolve(content)
 	// messages about CLPA
 	case message.CPartitionMsg:
 		crom.handlePartitionMsg(content)
@@ -31,6 +33,7 @@ func (crom *CLPARelayOutsideModule) HandleMessageOutsidePBFT(msgType message.Mes
 		crom.handleAccountStateAndTxMsg(content)
 	case message.CPartitionReady:
 		crom.handlePartitionReady(content)
+	
 	default:
 	}
 	return true
@@ -86,6 +89,16 @@ func (crom *CLPARelayOutsideModule) handleInjectTx(content []byte) {
 	}
 	crom.pbftNode.CurChain.Txpool.AddTxs2Pool(it.Txs)
 	crom.pbftNode.pl.Plog.Printf("S%dN%d : has handled injected txs msg, txs: %d \n", crom.pbftNode.ShardID, crom.pbftNode.NodeID, len(it.Txs))
+}
+
+func (crom *CLPARelayOutsideModule) handleResolve(content []byte) {
+	it := new(message.ResolveMessage)
+	err := json.Unmarshal(content, it)
+	if err != nil {
+		log.Panic(err)
+	}
+	crom.dNodeCh <- it
+	crom.pbftNode.pl.Plog.Printf("S%dN%d : has dispatch resolve msg, msg id: %s \n", crom.pbftNode.ShardID, crom.pbftNode.NodeID, it.MsgID)
 }
 
 // the leader received the partition message from listener/decider,

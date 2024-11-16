@@ -25,6 +25,8 @@ const (
 
 	CBlockInfo MessageType = "BlockInfo"
 	CSeqIDinfo MessageType = "SequenceID"
+
+	CResolve MessageType = "Resolve"
 )
 
 var (
@@ -84,6 +86,11 @@ type SendOldMessage struct {
 type InjectTxs struct {
 	Txs       []*core.Transaction
 	ToShardID uint64
+}
+
+type ResolveMessage struct {
+	MsgID      string
+	Identifier string
 }
 
 // data sent to the supervisor

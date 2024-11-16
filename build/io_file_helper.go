@@ -24,6 +24,24 @@ func readIpTable(ipTablePath string) map[uint64]map[uint64]string {
 	return ipMap
 }
 
+func readDomainInfo(domainInfoPath string) map[string]map[string]string {
+	// Read the contents of domainInfo.json
+	file, err := os.ReadFile(domainInfoPath)
+	if err != nil {
+		// handle error
+		fmt.Println(err)
+	}
+	// Create a map to store the domain information
+	var domainMap map[string]map[string]string
+	// Unmarshal the JSON data into the map
+	err = json.Unmarshal(file, &domainMap)
+	if err != nil {
+		// handle error
+		fmt.Println(err)
+	}
+	return domainMap
+}
+
 func attachLineToFile(filePath string, line string) error {
 	// 以追加模式打开文件，如果文件不存在则创建
 	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

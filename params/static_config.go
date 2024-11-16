@@ -16,6 +16,13 @@ type ChainConfig struct {
 	MaxRelayBlockSize uint64
 }
 
+type DENodeConfig struct {
+	Prefix           string
+	Addr             string
+	ParentMap       map[string]string
+	ChildrenMap     map[string]string  // domain -> addr
+}
+
 var (
 	SupervisorShard  = uint64(2147483647)
 	Init_Balance, _  = new(big.Int).SetString("100000000000000000000000000000000000000000000", 10)

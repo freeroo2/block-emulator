@@ -84,7 +84,7 @@ type PbftConsensusNode struct {
 }
 
 // generate a pbft consensus for a node
-func NewPbftNode(shardID, nodeID uint64, pcc *params.ChainConfig, messageHandleType string) *PbftConsensusNode {
+func NewPbftNode(shardID, nodeID uint64, pcc *params.ChainConfig, messageHandleType string, deCh chan *message.ResolveMessage) *PbftConsensusNode {
 	p := new(PbftConsensusNode)
 	p.ip_nodeTable = params.IPmap_nodeTable
 	p.node_nums = pcc.Nodes_perShard
@@ -150,6 +150,7 @@ func NewPbftNode(shardID, nodeID uint64, pcc *params.ChainConfig, messageHandleT
 		p.ohm = &CLPARelayOutsideModule{
 			pbftNode: p,
 			cdm:      ncdm,
+			dNodeCh:  deCh,
 		}
 	case "Broker":
 		p.ihm = &RawBrokerPbftExtraHandleMod{

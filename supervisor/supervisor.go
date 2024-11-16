@@ -128,13 +128,17 @@ func (d *Supervisor) SupervisorTxHandling() {
 		time.Sleep(time.Second)
 	}
 	// send stop message
-	stopmsg := message.MergeMessage(message.CStop, []byte("this is a stop message~"))
-	d.sl.Slog.Println("Supervisor: now sending cstop message to all nodes")
-	for sid := uint64(0); sid < d.ChainConfig.ShardNums; sid++ {
-		for nid := uint64(0); nid < d.ChainConfig.Nodes_perShard; nid++ {
-			networks.TcpDial(stopmsg, d.Ip_nodeTable[sid][nid])
-		}
-	}
+	// stopmsg := message.MergeMessage(message.CStop, []byte("this is a stop message~"))
+	// d.sl.Slog.Println("Supervisor: now sending cstop message to all nodes")
+	// for sid := uint64(0); sid < d.ChainConfig.ShardNums; sid++ {
+	// 	for nid := uint64(0); nid < d.ChainConfig.Nodes_perShard; nid++ {
+	// 		networks.TcpDial(stopmsg, d.Ip_nodeTable[sid][nid])
+	// 	}
+	// }
+
+	d.sl.Slog.Println("Supervisor: block here")
+	select {} // Block indefinitely
+	
 	// make sure all stop messages are sent.
 	time.Sleep(time.Duration(params.Delay+params.JitterRange+3) * time.Millisecond)
 
