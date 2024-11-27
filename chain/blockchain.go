@@ -32,6 +32,7 @@ type BlockChain struct {
 	Txpool       *core.TxPool        // the transaction pool
 	PartitionMap map[string]uint64   // the partition map which is defined by some algorithm can help account parition
 	pmlock       sync.RWMutex
+	txCh         chan *core.Transaction // ywb 将执行的交易传给DENode
 }
 
 // Get the transaction root, this root can be used to check the transactions
@@ -84,13 +85,42 @@ func (bc *BlockChain) GetUpdateStatusTrie(txs []*core.Transaction) common.Hash {
 		return common.BytesToHash(bc.CurrentBlock.Header.StateRoot)
 	}
 	// build trie from the triedb (in disk)
+	// ywb 打印当前区块的状态根哈希
+	fmt.Printf("ywb GetUpdateStatusTrie中当前区块链的 bc.CurrentBlock.Header.StateRoot: %v\n", bc.CurrentBlock.Header.StateRoot)
 	st, err := trie.New(trie.TrieID(common.BytesToHash(bc.CurrentBlock.Header.StateRoot)), bc.triedb)
 	if err != nil {
 		log.Panic(err)
 	}
 	cnt := 0
 	// handle transactions, the signature check is ignored here
+	fmt.Println("ywb 执行de内置合约")
 	for i, tx := range txs {
+		if tx.IsDeTx {
+			s_state_enc, _ := st.Get([]byte(tx.Identifier))
+			var s_state *core.DEState
+			switch tx.TxType {
+			case core.Register:
+				if s_state_enc == nil {
+					s_state = &core.DEState{
+						Nonce: uint64(i),
+					}
+					s_state.RegisterIdentifier(tx)
+				} else {
+					fmt.Println("标识符已经存在，不能重复注册")
+					continue
+				}
+			case core.Update:
+				s_state = core.DecodeASDE(s_state_enc)
+				s_state.UpdateIdentifier(tx)
+			case core.Delete:
+				s_state = core.DecodeASDE(s_state_enc)
+				s_state.DeleteIdentifier(tx)
+			}
+			st.Update([]byte(tx.Identifier), s_state.Encode())
+			cnt++
+            bc.txCh <- tx
+			continue
+		}
 		// fmt.Printf("tx %d: %s, %s\n", i, tx.Sender, tx.Recipient)
 		// senderIn := false
 		if !tx.Relayed && (bc.Get_PartitionMap(tx.Sender) == bc.ChainConfig.ShardID || tx.HasBroker) {
@@ -174,8 +204,15 @@ func (bc *BlockChain) GenerateBlock(miner int32) *core.Block {
 		Number:          bc.CurrentBlock.Header.Number + 1,
 		Time:            time.Now(),
 	}
+	fmt.Printf("ywb GenerateBlock\n")
 	// handle transactions to build root
 	rt := bc.GetUpdateStatusTrie(txs)
+
+	// if len(txs) > 0 {
+	// 	fmt.Printf("ywb GenerateBlock txs 0 for GetUpdateStatusTrie: %v\n", txs[0])
+	// 	fmt.Printf("ywb GenerateBlock txs 末尾 for GetUpdateStatusTrie: %v\n", txs[len(txs)-1])
+	// }
+	fmt.Printf("ywb GenerateBlock after GetUpdateStatusTrie rt: %v\n", rt.Bytes())
 
 	bh.StateRoot = rt.Bytes()
 	bh.TxRoot = GetTxTreeRoot(txs)
@@ -235,10 +272,15 @@ func (bc *BlockChain) AddBlock(b *core.Block) {
 	}
 
 	// if the treeRoot is existed in the node, the transactions is no need to be handled again
+	fmt.Printf("ywb AddBlock中GetUpdateStatusTrie之前的，传入block的state root is %v\n", b.Header.StateRoot)
 	_, err := trie.New(trie.TrieID(common.BytesToHash(b.Header.StateRoot)), bc.triedb)
 	if err != nil {
+		// fmt.Println("ywb AddBlock: the treeRoot is not existed in the node")
+		// fmt.Printf("ywb AddBlock txs 0 for GetUpdateStatusTrie: %v\n", b.Body[0])
+		// fmt.Printf("ywb AddBlock txs 末尾 for GetUpdateStatusTrie: %v\n", b.Body[len(b.Body) - 1])
 		rt := bc.GetUpdateStatusTrie(b.Body)
-		fmt.Println(bc.CurrentBlock.Header.Number+1, "the root = ", rt.Bytes())
+		// fmt.Println(bc.CurrentBlock.Header.Number+1, "the GetUpdateStatusTrie root = ", rt.Bytes())
+		fmt.Printf("%d the GetUpdateStatusTrie计算出来的 root = %v\n", bc.CurrentBlock.Header.Number+1, rt.Bytes())
 	}
 	bc.CurrentBlock = b
 	bc.Storage.AddBlock(b)
@@ -246,7 +288,7 @@ func (bc *BlockChain) AddBlock(b *core.Block) {
 
 // new a blockchain.
 // the ChainConfig is pre-defined to identify the blockchain; the db is the status trie database in disk
-func NewBlockChain(cc *params.ChainConfig, db ethdb.Database) (*BlockChain, error) {
+func NewBlockChain(cc *params.ChainConfig, db ethdb.Database, txCh chan *core.Transaction) (*BlockChain, error) {
 	fmt.Println("Generating a new blockchain", db)
 	chainDBfp := params.DatabaseWrite_path + fmt.Sprintf("chainDB/S%d_N%d", cc.ShardID, cc.NodeID)
 	bc := &BlockChain{
@@ -255,6 +297,7 @@ func NewBlockChain(cc *params.ChainConfig, db ethdb.Database) (*BlockChain, erro
 		Txpool:       core.NewTxPool(),
 		Storage:      storage.NewStorage(chainDBfp, cc),
 		PartitionMap: make(map[string]uint64),
+		txCh:         txCh,
 	}
 	curHash, err := bc.Storage.GetNewestBlockHash()
 	if err != nil {

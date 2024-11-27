@@ -26,7 +26,9 @@ const (
 	CBlockInfo MessageType = "BlockInfo"
 	CSeqIDinfo MessageType = "SequenceID"
 
-	CResolve MessageType = "Resolve"
+	CResolve         MessageType = "Resolve"
+	CPrefixQuery     MessageType = "PrefixQuery"
+	CIdentifierQuery MessageType = "IdentifierQuery"
 )
 
 var (
@@ -91,6 +93,39 @@ type InjectTxs struct {
 type ResolveMessage struct {
 	MsgID      string
 	Identifier string
+}
+
+type MsgType int
+
+const (
+	REQUEST MsgType = iota
+	RESPONSE
+)
+
+type QueryProcessStatus int
+
+const (
+	PREFIX_QUERY_FIRST QueryProcessStatus = iota
+	PREFIX_QUERY_FORWARD
+	IDENTIFIER_QUERY
+	ERROR
+	FINISH
+)
+
+type PrefixQueryMessage struct {
+	// MsgID   string
+	Prefix        string
+	Identifier    string
+	Status        QueryProcessStatus
+	Type          MsgType
+	ProxyAddress  string
+	TargetAddress string
+}
+
+type QueryMessage struct {
+	// MsgID      string
+	Identifier string
+	Result     core.IdentifierRecord
 }
 
 // data sent to the supervisor

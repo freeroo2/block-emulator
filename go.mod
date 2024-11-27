@@ -8,6 +8,8 @@ require (
 	github.com/spf13/pflag v1.0.5
 )
 
+require filippo.io/edwards25519 v1.1.0 // indirect
+
 require (
 	github.com/DataDog/zstd v1.5.2 // indirect
 	github.com/StackExchange/wmi v0.0.0-20180116203802-5d049714c4a6 // indirect
@@ -21,8 +23,10 @@ require (
 	github.com/cockroachdb/pebble v0.0.0-20230209160836-829675f94811 // indirect
 	github.com/cockroachdb/redact v1.1.3 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1
+	github.com/elliotchance/orderedmap/v2 v2.4.0
 	github.com/getsentry/sentry-go v0.18.0 // indirect
 	github.com/go-ole/go-ole v1.2.1 // indirect
+	github.com/go-sql-driver/mysql v1.8.1
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/gofrs/flock v0.8.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect

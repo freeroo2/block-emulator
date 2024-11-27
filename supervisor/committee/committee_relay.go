@@ -7,7 +7,7 @@ import (
 	"blockEmulator/params"
 	"blockEmulator/supervisor/signal"
 	"blockEmulator/supervisor/supervisor_log"
-	"blockEmulator/utils"
+	// "blockEmulator/utils"
 	"encoding/csv"
 	"encoding/json"
 	"io"
@@ -53,6 +53,11 @@ func data2tx(data []string, nonce uint64) (*core.Transaction, bool) {
 	return &core.Transaction{}, false
 }
 
+func data2Detx(data []string, nonce uint64) (*core.Transaction, bool) {
+	tx := core.NewDeTransaction(data[1], data[2], nonce, time.Now(), data[0], data[3], data[4], data[5], data[6], []byte(data[7]))
+	return tx, true
+}
+
 func (rthm *RelayCommitteeModule) HandleOtherMessage([]byte) {}
 
 func (rthm *RelayCommitteeModule) txSending(txlist []*core.Transaction) {
@@ -67,6 +72,7 @@ func (rthm *RelayCommitteeModule) txSending(txlist []*core.Transaction) {
 					Txs:       sendToShard[sid],
 					ToShardID: sid,
 				}
+				// rthm.sl.Slog.Printf("ywb txSending txs 0 : %v \n", it.Txs[0])
 				itByte, err := json.Marshal(it)
 				if err != nil {
 					log.Panic(err)
@@ -81,7 +87,9 @@ func (rthm *RelayCommitteeModule) txSending(txlist []*core.Transaction) {
 			break
 		}
 		tx := txlist[idx]
-		sendersid := uint64(utils.Addr2Shard(tx.Sender))
+		// sendersid := uint64(utils.Addr2Shard(tx.Sender))
+		// ywb 控制交易发向的分片
+		sendersid := uint64(2) // to A.0.a
 		sendToShard[sendersid] = append(sendToShard[sendersid], tx)
 	}
 }
@@ -96,6 +104,12 @@ func (rthm *RelayCommitteeModule) MsgSendingControl() {
 	reader := csv.NewReader(txfile)
 	txlist := make([]*core.Transaction, 0) // save the txs in this epoch (round)
 
+	// 跳过表头
+    _, err = reader.Read()
+    if err != nil {
+        log.Panic(err)
+    }
+
 	for {
 		data, err := reader.Read()
 		if err == io.EOF {
@@ -104,7 +118,8 @@ func (rthm *RelayCommitteeModule) MsgSendingControl() {
 		if err != nil {
 			log.Panic(err)
 		}
-		if tx, ok := data2tx(data, uint64(rthm.nowDataNum)); ok {
+		// if tx, ok := data2tx(data, uint64(rthm.nowDataNum)); ok {
+		if tx, ok := data2Detx(data, uint64(rthm.nowDataNum)); ok {
 			txlist = append(txlist, tx)
 			rthm.nowDataNum++
 		}
@@ -125,5 +140,6 @@ func (rthm *RelayCommitteeModule) MsgSendingControl() {
 
 // no operation here
 func (rthm *RelayCommitteeModule) HandleBlockInfo(b *message.BlockInfoMsg) {
-	rthm.sl.Slog.Printf("received from shard %d in epoch %d.\n", b.SenderShardID, b.Epoch)
+	// ywb
+	// rthm.sl.Slog.Printf("received from shard %d in epoch %d.\n", b.SenderShardID, b.Epoch)
 }

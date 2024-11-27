@@ -19,8 +19,9 @@ type ChainConfig struct {
 type DENodeConfig struct {
 	Prefix           string
 	Addr             string
-	ParentMap       map[string]string
-	ChildrenMap     map[string]string  // domain -> addr
+	ParentMap        map[string]string
+	SiblingMap       map[string]string
+	ChildrenMap      map[string]string  // domain -> addr
 }
 
 var (
@@ -30,4 +31,9 @@ var (
 	CommitteeMethod  = []string{"CLPA_Broker", "CLPA", "Broker", "Relay"}
 	MeasureBrokerMod = []string{"TPS_Broker", "TCL_Broker", "CrossTxRate_Broker", "TxNumberCount_Broker"}
 	MeasureRelayMod  = []string{"TPS_Relay", "TCL_Relay", "CrossTxRate_Relay", "TxNumberCount_Relay"}
+	Prefix           = "prefix"
+	CurPrefix        = "curPrefix"
+	Children 	   	 = "children"
+	Sibling  	     = "sibling"
+	Parent           = "parent"
 )

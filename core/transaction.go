@@ -13,6 +13,28 @@ import (
 	"time"
 )
 
+// TransactionType 定义交易类型
+type TransactionType int
+
+const (
+	Register TransactionType = iota
+	Update
+	Delete
+)
+
+func StringToTransactionType(s string) TransactionType {
+	switch s {
+	case "Register":
+		return Register
+	case "Update":
+		return Update
+	case "Delete":
+		return Delete
+	default:
+		return -1
+	}
+}
+
 type Transaction struct {
 	Sender    utils.Address
 	Recipient utils.Address
@@ -31,6 +53,15 @@ type Transaction struct {
 	OriginalSender utils.Address
 	FinalRecipient utils.Address
 	RawTxHash      []byte
+
+	// de-transaction
+	IsDeTx          bool
+	TxType          TransactionType
+	Identifier      string
+	IType           string
+	Data            []byte
+	DataAddress     string
+	MetaDataAddress string
 }
 
 func (tx *Transaction) PrintTx() string {
@@ -88,5 +119,34 @@ func NewTransaction(sender, recipient string, value *big.Int, nonce uint64, prop
 	tx.RawTxHash = nil
 	tx.HasBroker = false
 	tx.SenderIsBroker = false
+	tx.IsDeTx = false
+	return tx
+}
+
+func NewDeTransaction(sender, recipient string, nonce uint64, proposeTime time.Time,
+	txType, identifier, itype, dataAddress, metaDataAddress string, data []byte) *Transaction {
+
+	tx := &Transaction{
+		Sender:          sender,
+		Recipient:       recipient,
+		Nonce:           nonce,
+		Time:            proposeTime,
+		TxType:          StringToTransactionType(txType),
+		Identifier:      identifier,
+		IType:           itype,
+		DataAddress:     dataAddress,
+		MetaDataAddress: metaDataAddress,
+		Data:            data,
+	}
+
+	hash := sha256.Sum256(tx.Encode())
+	tx.TxHash = hash[:]
+	tx.Relayed = false
+	tx.FinalRecipient = ""
+	tx.OriginalSender = ""
+	tx.RawTxHash = nil
+	tx.HasBroker = false
+	tx.SenderIsBroker = false
+	tx.IsDeTx = true
 	return tx
 }

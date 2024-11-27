@@ -11,6 +11,7 @@ import (
 // "Raw" means that the pbft only make block consensus.
 type RawRelayOutsideModule struct {
 	pbftNode *PbftConsensusNode
+	deCh     chan interface{}
 }
 
 // msgType canbe defined in message
@@ -22,6 +23,10 @@ func (rrom *RawRelayOutsideModule) HandleMessageOutsidePBFT(msgType message.Mess
 		rrom.handleRelayWithProof(content)
 	case message.CInject:
 		rrom.handleInjectTx(content)
+	case message.CPrefixQuery:
+		rrom.handlePrefixQuery(content)
+	case message.CIdentifierQuery:
+		rrom.handleIdentifierQuery(content)
 	default:
 	}
 	return true
@@ -76,6 +81,27 @@ func (rrom *RawRelayOutsideModule) handleInjectTx(content []byte) {
 	if err != nil {
 		log.Panic(err)
 	}
+	// rrom.pbftNode.pl.Plog.Printf("ywb handleInjectTx txs 0 : %v \n", it.Txs[0])
 	rrom.pbftNode.CurChain.Txpool.AddTxs2Pool(it.Txs)
 	rrom.pbftNode.pl.Plog.Printf("S%dN%d : has handled injected txs msg, txs: %d \n", rrom.pbftNode.ShardID, rrom.pbftNode.NodeID, len(it.Txs))
+}
+
+func (rrom *RawRelayOutsideModule) handlePrefixQuery(content []byte) {
+	it := new(message.PrefixQueryMessage)
+	err := json.Unmarshal(content, it)
+	if err != nil {
+		log.Panic(err)
+	}
+	rrom.deCh <- it
+	rrom.pbftNode.pl.Plog.Printf("S%dN%d : has dispatch prefix query msg: %v \n", rrom.pbftNode.ShardID, rrom.pbftNode.NodeID, it)
+}
+
+func (rrom *RawRelayOutsideModule) handleIdentifierQuery(content []byte) {
+	it := new(message.QueryMessage)
+	err := json.Unmarshal(content, it)
+	if err != nil {
+		log.Panic(err)
+	}
+	rrom.deCh <- it
+	rrom.pbftNode.pl.Plog.Printf("S%dN%d : has dispatch identifier query msg: %v \n", rrom.pbftNode.ShardID, rrom.pbftNode.NodeID, it)
 }

@@ -1,5 +1,5 @@
 {
-  "ConsensusMethod": 1,
+  "ConsensusMethod": 3,
   
   "PbftViewChangeTimeOut":20000,
 
@@ -7,18 +7,18 @@
 
   "Block_Interval": 5000,
 
-  "BlockSize": 2000,
-  "BlocksizeInBytes": 200000,
+  "BlockSize": 1000,
+  "BlocksizeInBytes": 400000,
   "UseBlocksizeInBytes": 0,
 
-  "InjectSpeed": 2000,
-  "TotalDataSize": 80000,
-  "TxBatchSize": 16000,
+  "InjectSpeed": 1000,
+  "TotalDataSize": 6000,
+  "TxBatchSize": 3000,
 
   "BrokerNum": 10,
   "RelayWithMerkleProof": 0,
   
-  "DatasetFile": "./selectedTxs_300K.csv",
+  "DatasetFile": "./register_records.csv",
   "ReconfigTimeGap": 50,
 
   "Delay": -1,

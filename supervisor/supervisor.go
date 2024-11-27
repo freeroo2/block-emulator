@@ -7,6 +7,7 @@ import (
 	"blockEmulator/message"
 	"blockEmulator/networks"
 	"blockEmulator/params"
+	types "blockEmulator/rpc"
 	"blockEmulator/supervisor/committee"
 	"blockEmulator/supervisor/measure"
 	"blockEmulator/supervisor/signal"
@@ -16,6 +17,8 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/rpc"
+	"net/rpc/jsonrpc"
 	"sync"
 	"time"
 )
@@ -101,10 +104,10 @@ func (d *Supervisor) handleBlockInfos(content []byte) {
 	}
 	// StopSignal check
 	if bim.BlockBodyLength == 0 {
-		d.sl.Slog.Println("here +++++++++++++++++")
+		// d.sl.Slog.Println("here +++++++++++++++++")
 		d.Ss.StopGap_Inc()
 	} else {
-		d.sl.Slog.Println("here ----------------")
+		// d.sl.Slog.Println("here ----------------")
 		d.Ss.StopGap_Reset()
 	}
 
@@ -120,11 +123,13 @@ func (d *Supervisor) handleBlockInfos(content []byte) {
 // read transactions from dataFile. When the number of data is enough,
 // the Supervisor will do re-partition and send partitionMSG and txs to leaders.
 func (d *Supervisor) SupervisorTxHandling() {
-	d.comMod.MsgSendingControl()
+
+	// d.comMod.MsgSendingControl()
+
 	// TxHandling is end
-	d.sl.Slog.Println("here 1111111111111111111")
+	// d.sl.Slog.Println("here 1111111111111111111")
 	for !d.Ss.GapEnough() { // wait all txs to be handled
-		d.sl.Slog.Println("here 2222222222222")
+		// d.sl.Slog.Println("here 2222222222222")
 		time.Sleep(time.Second)
 	}
 	// send stop message
@@ -138,7 +143,7 @@ func (d *Supervisor) SupervisorTxHandling() {
 
 	d.sl.Slog.Println("Supervisor: block here")
 	select {} // Block indefinitely
-	
+
 	// make sure all stop messages are sent.
 	time.Sleep(time.Duration(params.Delay+params.JitterRange+3) * time.Millisecond)
 
@@ -154,6 +159,10 @@ func (d *Supervisor) handleMessage(msg []byte) {
 	case message.CBlockInfo:
 		d.handleBlockInfos(content)
 		// add codes for more functionality
+	case message.CPrefixQuery:
+		d.handlePrefixQueryResp(content)
+	case message.CIdentifierQuery:
+		d.handleQueryResp(content)
 	default:
 		d.comMod.HandleOtherMessage(msg)
 		for _, mm := range d.testMeasureMods {
@@ -238,4 +247,99 @@ func (d *Supervisor) CloseSupervisor() {
 	}
 	networks.CloseAllConnInPool()
 	d.tcpLn.Close()
+}
+
+// 启动 JSON-RPC 服务
+func (d *Supervisor) StartRPCServer() {
+	rpcServer := rpc.NewServer()
+	rpcServer.Register(d)
+
+	listener, err := net.Listen("tcp", ":12345") // 监听端口
+	if err != nil {
+		log.Fatalf("Failed to start RPC server: %v", err)
+	}
+	defer listener.Close()
+
+	log.Println("RPC server is listening on port 12345")
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Printf("Failed to accept connection: %v", err)
+			continue
+		}
+		go rpcServer.ServeCodec(jsonrpc.NewServerCodec(conn))
+	}
+}
+
+// rpc demo
+func (d *Supervisor) GetStatus(args *types.GetStatusArgs, reply *types.GetStatusReply) error {
+	*reply = types.GetStatusReply{Status: "Supervisor is running"}
+	return nil
+}
+
+func (d *Supervisor) PrefixQuery(args *types.PrefixQueryArgs, reply *types.PrefixQueryReply) error {
+	d.sl.Slog.Printf("ywb sending prefix query to proxy node %s \n", args.Addr)
+	query := message.PrefixQueryMessage{
+		Status:       message.PREFIX_QUERY_FIRST,
+		Type:         message.REQUEST,
+		ProxyAddress: args.Addr,
+		Prefix:       args.Prefix,
+		Identifier:   args.Identifier,
+	}
+	itByte, err := json.Marshal(query)
+	if err != nil {
+		log.Panic(err)
+	}
+	send_msg := message.MergeMessage(message.CPrefixQuery, itByte)
+	go networks.TcpDial(send_msg, query.ProxyAddress)
+	// *reply = message.PrefixQueryMessage{Status: "Supervisor is running"}
+	return nil
+}
+
+// func (d *Supervisor) IdentifierQuery(args *types.IdentifierQueryArgs, reply *types.IdentifierQueryReply) error {
+// 	d.sl.Slog.Printf("ywb sending identifier query to proxy node %s \n", args.Addr)
+// 	query := message.QueryMessage{
+// 		Identifier: args.Identifier,
+// 	}
+// 	itByte, err := json.Marshal(query)
+// 	if err != nil {
+// 		log.Panic(err)
+// 	}
+// 	send_msg := message.MergeMessage(message.CIdentifierQuery, itByte)
+// 	go networks.TcpDial(send_msg, args.Addr)
+// 	// *reply = message.QueryMessage{Status: "Supervisor is running"}
+// 	return nil
+// }
+
+func (d *Supervisor) handlePrefixQueryResp(content []byte) {
+	resp := new(message.PrefixQueryMessage)
+	err := json.Unmarshal(content, resp)
+	if err != nil {
+		log.Panic()
+	}
+
+	// 得到前缀查询结果
+	d.sl.Slog.Printf("The prefix query result : %v\n", resp) // todo time metrics 想办法和请求对上
+
+	// todo 进行标识符查询
+	query := message.QueryMessage{
+		Identifier:   resp.Identifier,
+	}
+	itByte, err := json.Marshal(query)
+	if err != nil {
+		log.Panic(err)
+	}
+	send_msg := message.MergeMessage(message.CIdentifierQuery, itByte)
+	go networks.TcpDial(send_msg, resp.TargetAddress)
+}
+
+func (d *Supervisor) handleQueryResp(content []byte) {
+	resp := new(message.QueryMessage)
+	err := json.Unmarshal(content, resp)
+	if err != nil {
+		log.Panic()
+	}
+
+	// 得到标识符查询结果
+	d.sl.Slog.Printf("The query result : %v\n", resp) // todo time metrics 想办法和请求对上
 }

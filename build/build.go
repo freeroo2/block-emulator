@@ -2,8 +2,8 @@ package build
 
 import (
 	"blockEmulator/consensus_shard/pbft_all"
+	"blockEmulator/core"
 	demis "blockEmulator/de-mis"
-	"blockEmulator/message"
 	"blockEmulator/networks"
 	"blockEmulator/params"
 	"blockEmulator/supervisor"
@@ -51,13 +51,17 @@ func initDENodeConfig(nid, sid uint64) *params.DENodeConfig {
 	// Read the contents of domainConfig.json
 	domainMap := readDomainInfo(fmt.Sprintf("./nodes/S%d/N%d/domainConfig.json", sid, nid))
 	fmt.Println(domainMap)
-
+	parentMap := domainMap[params.Parent]
+	siblingMap := domainMap[params.Sibling]
+	childrenMap := domainMap[params.Children]
 	pcc := &params.DENodeConfig{
-		Prefix:       "",
+		Prefix:       domainMap[params.Prefix][params.CurPrefix],
 		Addr:         params.IPmap_nodeTable[sid][nid],
-		ParentMap:    make(map[string]string),
-		ChildrenMap:  make(map[string]string),
+		ParentMap:    parentMap,
+		SiblingMap:   siblingMap,
+		ChildrenMap:  childrenMap,
 	}
+	fmt.Println(pcc)
 	return pcc
 }
 
@@ -75,14 +79,16 @@ func BuildSupervisor(nnm, snm uint64) {
 	lsn.NewSupervisor(params.SupervisorAddr, initConfig(123, nnm, 123, snm), params.CommitteeMethod[methodID], measureMod...)
 	time.Sleep(10000 * time.Millisecond)
 	go lsn.SupervisorTxHandling()
+	go lsn.StartRPCServer()
 	lsn.TcpListen()
 }
 
 func BuildNewPbftNode(nid, nnm, sid, snm uint64) {
 	methodID := params.ConsensusMethod
-	deCh := make(chan *message.ResolveMessage, 1024)
-	worker := pbft_all.NewPbftNode(sid, nid, initConfig(nid, nnm, sid, snm), params.CommitteeMethod[methodID], deCh)
-	deNode := demis.NewDENode(initDENodeConfig(nid, sid), deCh)
+	deReqCh := make(chan interface{}, 1024)
+	txCh := make(chan *core.Transaction, 1024)
+	worker := pbft_all.NewPbftNode(sid, nid, initConfig(nid, nnm, sid, snm), params.CommitteeMethod[methodID], deReqCh, txCh)
+	deNode := demis.NewDENode(sid, nid, initDENodeConfig(nid, sid), deReqCh, txCh)
 	// ywb 这里nid是本节点的id，sid是本节点所在分片的id，可以根据这个去读取指定目录的domain的配置文件
 	go worker.TcpListen()
 
