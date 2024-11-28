@@ -1,13 +1,14 @@
-package demis
+package de_mis
 
 import (
 	"blockEmulator/core"
-	"blockEmulator/de-mis/demis_log"
+	"blockEmulator/de_mis/cache"
+	"blockEmulator/de_mis/demis_log"
+	"blockEmulator/de_mis/utils"
 	"blockEmulator/message"
-	"blockEmulator/networks"
 	"blockEmulator/params"
 	"database/sql"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -32,7 +33,8 @@ type DENode struct {
 	wait sync.WaitGroup
 
 	// database
-	db *sql.DB
+	db    *sql.DB
+	cache cache.Cache
 }
 
 func NewDENode(shardID, nodeID uint64, cfg *params.DENodeConfig, deCh chan interface{}, txCh chan *core.Transaction) *DENode {
@@ -53,6 +55,10 @@ func NewDENode(shardID, nodeID uint64, cfg *params.DENodeConfig, deCh chan inter
 	}
 	de.db = db
 	de.dl = demis_log.NewDemisLog(shardID, nodeID)
+
+	if params.CacheEnable {
+		de.cache = cache.NewSieve(params.CacheSize)
+	}
 	return de
 }
 
@@ -74,12 +80,13 @@ func (de *DENode) process() {
 		case msg := <-de.reqCh:
 			de.dl.Dlog.Printf("Received message: %v", msg)
 			// 在这里处理接收到的消息
-			switch data := msg.(type) {
-			case *message.PrefixQueryMessage:
-				de.handlePrefixQuery(data)
-			case *message.QueryMessage:
-				de.handleQuery(data)
-			}
+			// switch data := msg.(type) {
+			// case *message.PrefixQueryMessage:
+			// 	de.handlePrefixQuery(data)
+			// case *message.QueryMessage:
+			// 	de.handleQuery(data)
+			// }
+			de.handlePrefixQuery(msg.(*message.PrefixQueryMessage))
 		case tx := <-de.txCh:
 			de.dl.Dlog.Printf("Received transaction: %v", tx)
 			switch tx.TxType {
@@ -171,18 +178,30 @@ func (de *DENode) handlePrefixQuery(msg *message.PrefixQueryMessage) {
 }
 
 func (de *DENode) handleFirstQuery(req *message.PrefixQueryMessage) {
+	if params.CacheEnable {
+		if record, exists := de.cache.Get(req.Prefix); exists {
+			resp := message.PrefixQueryMessage{Identifier: req.Identifier, Record: *(record.(*core.IdentifierRecord))} // todo
+			// tcp send
+			de.dl.Dlog.Printf("ywb cache hit, resp to supervisor : %s\n", record)
+			utils.WriteMsg(resp, message.CPrefixQuery, params.IPmap_nodeTable[params.SupervisorShard][0])
+			return
+		}
+	}
+
 	// startTime := time.Now()
 	if req.Prefix == de.prefix {
-		res := message.PrefixQueryMessage{Type: message.RESPONSE, Status: message.FINISH,
+		resp := message.PrefixQueryMessage{Type: message.RESPONSE, Status: message.FINISH,
 			Prefix: req.Prefix, Identifier: req.Identifier, TargetAddress: de.addr}
-		// tcp send
-		de.dl.Dlog.Printf("ywb sending forward prefix query to supervisor : %s\n", params.IPmap_nodeTable[params.SupervisorShard][0])
-		itByte, err := json.Marshal(res)
+		record, err := de.queryHelper(req.Identifier)
 		if err != nil {
-			log.Panic(err)
+			de.dl.Dlog.Fatalf("Error querying identifier: %s", err)
+		} else {
+			resp.Record = *record
 		}
-		send_msg := message.MergeMessage(message.CPrefixQuery, itByte)
-		go networks.TcpDial(send_msg, params.IPmap_nodeTable[params.SupervisorShard][0])
+
+		// tcp send
+		de.dl.Dlog.Printf("ywb sending finish to supervisor : %s\n", params.IPmap_nodeTable[params.SupervisorShard][0])
+		utils.WriteMsg(resp, message.CPrefixQuery, params.IPmap_nodeTable[params.SupervisorShard][0])
 		return
 	}
 
@@ -192,29 +211,35 @@ func (de *DENode) handleFirstQuery(req *message.PrefixQueryMessage) {
 	if nextAddr != "" {
 		// tcp send
 		de.dl.Dlog.Printf("ywb sending forward prefix query to %s \n", nextAddr)
-		itByte, err := json.Marshal(nextReq)
-		if err != nil {
-			log.Panic(err)
-		}
-		send_msg := message.MergeMessage(message.CPrefixQuery, itByte)
-		go networks.TcpDial(send_msg, nextAddr)
+		utils.WriteMsg(nextReq, message.CPrefixQuery, nextAddr)
 	} else {
 		// error todo
 	}
 }
 
 func (de *DENode) handleRelayQuery(msg *message.PrefixQueryMessage) {
+	if params.CacheEnable {
+		if record, exists := de.cache.Get(msg.Prefix); exists {
+			resp := message.PrefixQueryMessage{Identifier: msg.Identifier, Record: *(record.(*core.IdentifierRecord))} // todo
+			// tcp send
+			de.dl.Dlog.Printf("ywb cache hit, resp to proxy node : %s\n", record)
+			utils.WriteMsg(resp, message.CPrefixQuery, msg.ProxyAddress)
+			return
+		}
+	}
+
 	if msg.Prefix == de.prefix {
-		res := message.PrefixQueryMessage{Type: message.RESPONSE, Status: message.FINISH, Prefix: msg.Prefix,
+		resp := message.PrefixQueryMessage{Type: message.RESPONSE, Status: message.FINISH, Prefix: msg.Prefix,
 			Identifier: msg.Identifier, ProxyAddress: msg.ProxyAddress, TargetAddress: de.addr}
+		record, err := de.queryHelper(msg.Identifier)
+		if err != nil {
+			de.dl.Dlog.Fatalf("Error querying identifier: %s", err)
+		} else {
+			resp.Record = *record
+		}
 		// tcp send
 		de.dl.Dlog.Printf("ywb sending finish prefix query to proxy node : %s\n", msg.ProxyAddress)
-		itByte, err := json.Marshal(res)
-		if err != nil {
-			log.Panic(err)
-		}
-		send_msg := message.MergeMessage(message.CPrefixQuery, itByte)
-		go networks.TcpDial(send_msg, msg.ProxyAddress)
+		utils.WriteMsg(resp, message.CPrefixQuery, msg.ProxyAddress)
 		return
 	}
 
@@ -223,13 +248,9 @@ func (de *DENode) handleRelayQuery(msg *message.PrefixQueryMessage) {
 		// tcp send back to proxy node
 		resp := message.PrefixQueryMessage{Type: message.RESPONSE, Status: message.PREFIX_QUERY_FORWARD,
 			Prefix: msg.Prefix, Identifier: msg.Identifier, ProxyAddress: de.addr, TargetAddress: nextAddr}
+
 		de.dl.Dlog.Printf("ywb sending forward prefix resp with nextAddr %s  to proxy node %s \n", nextAddr, msg.ProxyAddress)
-		itByte, err := json.Marshal(resp)
-		if err != nil {
-			log.Panic(err)
-		}
-		send_msg := message.MergeMessage(message.CPrefixQuery, itByte)
-		go networks.TcpDial(send_msg, msg.ProxyAddress)
+		utils.WriteMsg(resp, message.CPrefixQuery, msg.ProxyAddress)
 	} else {
 		// error todo
 	}
@@ -249,49 +270,43 @@ func calculateLevel(prefix string) uint64 {
 func (de *DENode) handlePrefixQueryResp(resp *message.PrefixQueryMessage) {
 	// 在这里处理接收到的响应消息、
 	var nextAddr string
-	var msg message.PrefixQueryMessage
+	msg := *resp
 	switch resp.Status {
 	case message.PREFIX_QUERY_FORWARD:
 		{
 			de.dl.Dlog.Printf("Received forward response: %v", resp)
-			// tcp send
-			msg = message.PrefixQueryMessage{Type: message.REQUEST, Status: message.PREFIX_QUERY_FORWARD,
-				Prefix: resp.Prefix, Identifier: resp.Identifier, ProxyAddress: de.addr}
+			msg.Type = message.REQUEST
+			msg.Status = message.PREFIX_QUERY_FORWARD
 			nextAddr = resp.TargetAddress
 		}
 	case message.FINISH:
 		{
 			de.dl.Dlog.Printf("Received finish response: %v", resp)
 			// tcp send resp to spv
-			msg = message.PrefixQueryMessage{Type: message.RESPONSE, Status: message.FINISH,
-				Prefix: resp.Prefix, Identifier: resp.Identifier, ProxyAddress: de.addr, TargetAddress: resp.TargetAddress}
 			nextAddr = params.IPmap_nodeTable[params.SupervisorShard][0]
+			// cache set todo test
+			if params.CacheEnable {
+				de.cache.Set(resp.Prefix, &resp.Record)
+			}
 		}
 	case message.ERROR:
 		{
 			de.dl.Dlog.Printf("Received error response: %v", resp)
 			// tcp send resp to spv
-			msg = message.PrefixQueryMessage{Type: message.RESPONSE, Status: message.ERROR,
-				Prefix: resp.Prefix, Identifier: resp.Identifier, ProxyAddress: de.addr}
+			msg.Type = message.RESPONSE
+			msg.Status = message.ERROR
 			nextAddr = params.IPmap_nodeTable[params.SupervisorShard][0]
 		}
 	}
 
 	de.dl.Dlog.Printf("Sending forward prefix response to %s\n", nextAddr)
-	itByte, err := json.Marshal(msg)
-	if err != nil {
-		log.Panic(err)
-	}
-	send_msg := message.MergeMessage(message.CPrefixQuery, itByte)
-	go networks.TcpDial(send_msg, nextAddr)
+
+	utils.WriteMsg(msg, message.CPrefixQuery, nextAddr)
 }
 
 // return 1 ~ n
 func calFirstMismatchPos(targetParts, curParts []string) uint64 {
-
 	log.Printf("ndParts: %v, targetParts: %v", curParts, targetParts)
-
-	// log.Info().Msgf("i: %d, ndParts[%d]: %s, targetParts[%d]: %s", i, i, ndParts[i], i, targetParts[i])
 
 	i := 0
 	for i < len(curParts) && i < len(targetParts) {
@@ -328,14 +343,6 @@ func (de *DENode) findNextAddr(targetPrefix string) string {
 		if addr, exists := de.siblingMap[nextPrefix]; exists {
 			nextAddr = addr
 		}
-		// for prefix, addr := range de.siblingMap {
-		// 	mismatchPos := calFirstMismatchPos(targetParts, strings.Split(prefix, "."))
-		// 	de.dl.Dlog.Printf("sibling prefix: %s, targetPrefix: %s, mismatchIndex: %d", prefix, targetPrefix, mismatchPos)
-		// 	if mismatchPos > firstMismatchPos {
-		// 		nextAddr = addr
-		// 		break
-		// 	}
-		// }
 
 	} else {
 		// 向子节点请求
@@ -344,14 +351,6 @@ func (de *DENode) findNextAddr(targetPrefix string) string {
 		if addr, exists := de.childrenMap[nextPrefix]; exists {
 			nextAddr = addr
 		}
-		// for prefix, addr := range de.childrenMap {
-		// 	mismatchPos := calFirstMismatchPos(targetParts, strings.Split(prefix, "."))
-		// 	de.dl.Dlog.Printf("child prefix: %s, targetPrefix: %s, mismatchIndex: %d", prefix, targetPrefix, mismatchPos)
-		// 	if mismatchPos > firstMismatchPos {
-		// 		nextAddr = addr
-		// 		break
-		// 	}
-		// }
 	}
 	return nextAddr
 }
@@ -364,37 +363,28 @@ func constructPrefix(segments []string, mismatchPos uint64) string {
 	return strings.Join(segments[:mismatchPos], ".")
 }
 
-func (de *DENode) handleQuery(msg *message.QueryMessage) {
+// 查询本地标识符记录，与缓存无关
+func (de *DENode) queryHelper(identifier string) (*core.IdentifierRecord, error) {
 	// 在这里处理接收到的查询消息
-	de.dl.Dlog.Printf("Received query message: %v", msg)
-
-	parts := strings.Split(msg.Identifier, "/")
+	de.dl.Dlog.Printf("queryHelper received query : %v", identifier)
+	parts := strings.Split(identifier, "/")
 	if len(parts) != 2 {
-		de.dl.Dlog.Printf("Invalid query format: %v", msg.Identifier)
-		return
+		return nil, errors.New("invalid identifier format:" + identifier)
 	}
 	// prefix := parts[0]
 	suffix := parts[1]
 	subParts := strings.Split(suffix, ":")
 	if len(subParts) != 2 {
-		de.dl.Dlog.Printf("Invalid suffix format: %v", suffix)
-		return
+		return nil, errors.New("invalid suffix format:" + suffix)
 	}
 	typ := subParts[0]
-	de.dl.Dlog.Printf("Extracted query type: %s", typ)
 
-	record, err := de.queryByIdentifier(typ, msg.Identifier)
+	record, err := de.queryByIdentifier(typ, identifier)
 	if err != nil {
-		de.dl.Dlog.Fatalf("query error: %s", err)
-		return
+		return nil, err
 	}
 
 	de.dl.Dlog.Printf("Query result: %v", record)
-	msg.Result = *record
-	itByte, err := json.Marshal(msg)
-	if err != nil {
-		log.Panic(err)
-	}
-	send_msg := message.MergeMessage(message.CIdentifierQuery, itByte)
-	go networks.TcpDial(send_msg, params.IPmap_nodeTable[params.SupervisorShard][0])
+	result := record
+	return result, nil
 }

@@ -51,6 +51,12 @@ var (
 	Bandwidth   int // The bandwidth limit (Bytes). +inf if bandwidth < 0
 )
 
+// de-mis
+var (
+	CacheEnable = true // 1: enable cache, 0: disable cache
+	CacheSize   = 1000  // The size of cache
+)
+
 // read from file
 type globalConfig struct {
 	ConsensusMethod int `json:"ConsensusMethod"`
@@ -77,6 +83,9 @@ type globalConfig struct {
 	Delay       int `json:"Delay"`
 	JitterRange int `json:"JitterRange"`
 	Bandwidth   int `json:"Bandwidth"`
+
+	CacheEnable bool `json:"CacheEnable"`
+	CacheSize   int  `json:"CacheSize"`
 }
 
 func ReadConfigFile() {
@@ -126,4 +135,8 @@ func ReadConfigFile() {
 	Delay = config.Delay
 	JitterRange = config.JitterRange
 	Bandwidth = config.Bandwidth
+
+	// de-mis params
+	CacheEnable = config.CacheEnable
+	CacheSize   = config.CacheSize
 }

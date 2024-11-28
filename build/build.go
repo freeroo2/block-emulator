@@ -3,7 +3,7 @@ package build
 import (
 	"blockEmulator/consensus_shard/pbft_all"
 	"blockEmulator/core"
-	demis "blockEmulator/de-mis"
+	demis "blockEmulator/de_mis"
 	"blockEmulator/networks"
 	"blockEmulator/params"
 	"blockEmulator/supervisor"

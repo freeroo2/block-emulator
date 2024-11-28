@@ -23,5 +23,8 @@
 
   "Delay": -1,
   "JitterRange": -1,
-  "Bandwidth":10000000
+  "Bandwidth":10000000,
+
+  "CacheEnable" : false,
+  "CacheSize" : 1000
 }

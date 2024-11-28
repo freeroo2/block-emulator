@@ -161,8 +161,6 @@ func (d *Supervisor) handleMessage(msg []byte) {
 		// add codes for more functionality
 	case message.CPrefixQuery:
 		d.handlePrefixQueryResp(content)
-	case message.CIdentifierQuery:
-		d.handleQueryResp(content)
 	default:
 		d.comMod.HandleOtherMessage(msg)
 		for _, mm := range d.testMeasureMods {
@@ -320,26 +318,4 @@ func (d *Supervisor) handlePrefixQueryResp(content []byte) {
 
 	// 得到前缀查询结果
 	d.sl.Slog.Printf("The prefix query result : %v\n", resp) // todo time metrics 想办法和请求对上
-
-	// todo 进行标识符查询
-	query := message.QueryMessage{
-		Identifier:   resp.Identifier,
-	}
-	itByte, err := json.Marshal(query)
-	if err != nil {
-		log.Panic(err)
-	}
-	send_msg := message.MergeMessage(message.CIdentifierQuery, itByte)
-	go networks.TcpDial(send_msg, resp.TargetAddress)
-}
-
-func (d *Supervisor) handleQueryResp(content []byte) {
-	resp := new(message.QueryMessage)
-	err := json.Unmarshal(content, resp)
-	if err != nil {
-		log.Panic()
-	}
-
-	// 得到标识符查询结果
-	d.sl.Slog.Printf("The query result : %v\n", resp) // todo time metrics 想办法和请求对上
 }

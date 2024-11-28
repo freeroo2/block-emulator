@@ -28,7 +28,6 @@ const (
 
 	CResolve         MessageType = "Resolve"
 	CPrefixQuery     MessageType = "PrefixQuery"
-	CIdentifierQuery MessageType = "IdentifierQuery"
 )
 
 var (
@@ -112,6 +111,11 @@ const (
 	FINISH
 )
 
+// type Result struct {
+// 	Addr   string
+// 	record core.IdentifierRecord
+// }
+
 type PrefixQueryMessage struct {
 	// MsgID   string
 	Prefix        string
@@ -120,6 +124,7 @@ type PrefixQueryMessage struct {
 	Type          MsgType
 	ProxyAddress  string
 	TargetAddress string
+	Record        core.IdentifierRecord
 }
 
 type QueryMessage struct {

@@ -25,8 +25,6 @@ func (rrom *RawRelayOutsideModule) HandleMessageOutsidePBFT(msgType message.Mess
 		rrom.handleInjectTx(content)
 	case message.CPrefixQuery:
 		rrom.handlePrefixQuery(content)
-	case message.CIdentifierQuery:
-		rrom.handleIdentifierQuery(content)
 	default:
 	}
 	return true
@@ -94,14 +92,4 @@ func (rrom *RawRelayOutsideModule) handlePrefixQuery(content []byte) {
 	}
 	rrom.deCh <- it
 	rrom.pbftNode.pl.Plog.Printf("S%dN%d : has dispatch prefix query msg: %v \n", rrom.pbftNode.ShardID, rrom.pbftNode.NodeID, it)
-}
-
-func (rrom *RawRelayOutsideModule) handleIdentifierQuery(content []byte) {
-	it := new(message.QueryMessage)
-	err := json.Unmarshal(content, it)
-	if err != nil {
-		log.Panic(err)
-	}
-	rrom.deCh <- it
-	rrom.pbftNode.pl.Plog.Printf("S%dN%d : has dispatch identifier query msg: %v \n", rrom.pbftNode.ShardID, rrom.pbftNode.NodeID, it)
 }
