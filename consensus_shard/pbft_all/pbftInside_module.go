@@ -69,26 +69,28 @@ func (rphm *RawRelayPbftExtraHandleMod) HandleinCommit(cmsg *message.Commit) boo
 		interShardTxs := make([]*core.Transaction, 0)
 		relay1Txs := make([]*core.Transaction, 0)
 		relay2Txs := make([]*core.Transaction, 0)
+
+		interShardTxs = append(interShardTxs, block.Body...)
 		// for _, tx := range block.Body {
-		// 	ssid := rphm.pbftNode.CurChain.Get_PartitionMap(tx.Sender)
-		// 	rsid := rphm.pbftNode.CurChain.Get_PartitionMap(tx.Recipient)
-		// 	if !tx.Relayed && ssid != rphm.pbftNode.ShardID {
-		// 		log.Panic("incorrect tx")
-		// 	}
-		// 	if tx.Relayed && rsid != rphm.pbftNode.ShardID {
-		// 		log.Panic("incorrect tx")
-		// 	}
-		// 	if rsid != rphm.pbftNode.ShardID {
-		// 		relay1Txs = append(relay1Txs, tx)
-		// 		tx.Relayed = true
-		// 		rphm.pbftNode.CurChain.Txpool.AddRelayTx(tx, rsid)
-		// 	} else {
-		// 		if tx.Relayed {
-		// 			relay2Txs = append(relay2Txs, tx)
-		// 		} else {
-		// 			interShardTxs = append(interShardTxs, tx)
-		// 		}
-		// 	}
+			// ssid := rphm.pbftNode.CurChain.Get_PartitionMap(tx.Sender)
+			// rsid := rphm.pbftNode.CurChain.Get_PartitionMap(tx.Recipient)
+			// if !tx.Relayed && ssid != rphm.pbftNode.ShardID {
+			// 	log.Panic("incorrect tx")
+			// }
+			// if tx.Relayed && rsid != rphm.pbftNode.ShardID {
+			// 	log.Panic("incorrect tx")
+			// }
+			// if rsid != rphm.pbftNode.ShardID {
+			// 	relay1Txs = append(relay1Txs, tx)
+			// 	tx.Relayed = true
+			// 	rphm.pbftNode.CurChain.Txpool.AddRelayTx(tx, rsid)
+			// } else {
+			// 	if tx.Relayed {
+			// 		relay2Txs = append(relay2Txs, tx)
+			// 	} else {
+			// 		interShardTxs = append(interShardTxs, tx)
+			// 	}
+			// }
 		// }
 
 		// // send relay txs

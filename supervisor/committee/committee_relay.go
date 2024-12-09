@@ -139,5 +139,5 @@ func (rthm *RelayCommitteeModule) MsgSendingControl() {
 // no operation here
 func (rthm *RelayCommitteeModule) HandleBlockInfo(b *message.BlockInfoMsg) {
 	// ywb
-	rthm.sl.Slog.Printf("received from shard %d in epoch %d, bim: %v\n", b.SenderShardID, b.Epoch, b)
+	// rthm.sl.Slog.Printf("received from shard %d in epoch %d, bim: %v\n", b.SenderShardID, b.Epoch, b)
 }

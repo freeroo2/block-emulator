@@ -5,7 +5,7 @@
 
   "ExpDataRootDir": "expTest",
 
-  "Block_Interval": 5000,
+  "Block_Interval": 1000,
 
   "BlockSize": 1000,
   "BlocksizeInBytes": 400000,

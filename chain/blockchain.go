@@ -88,7 +88,7 @@ func (bc *BlockChain) GetUpdateStatusTrie(txs []*core.Transaction) common.Hash {
 	}
 	// build trie from the triedb (in disk)
 	// ywb 打印当前区块的状态根哈希
-	fmt.Printf("ywb GetUpdateStatusTrie中当前区块链的 bc.CurrentBlock.Header.StateRoot: %v\n", bc.CurrentBlock.Header.StateRoot)
+	// fmt.Printf("ywb GetUpdateStatusTrie中当前区块链的 bc.CurrentBlock.Header.StateRoot: %v\n", bc.CurrentBlock.Header.StateRoot)
 	st, err := trie.New(trie.TrieID(common.BytesToHash(bc.CurrentBlock.Header.StateRoot)), bc.triedb)
 	if err != nil {
 		log.Panic(err)
@@ -100,7 +100,7 @@ func (bc *BlockChain) GetUpdateStatusTrie(txs []*core.Transaction) common.Hash {
 		if tx.IsDeTx {
 			identifier := bc.deNode.BuildIdentifier(tx.Prefix, tx.IType, tx.Suffix)
 			tx.Identifier = identifier
-			fmt.Printf("ywb 执行de内置合约，identifier: %s\n", identifier)
+			// fmt.Printf("ywb 执行de内置合约，identifier: %s\n", identifier)
 			s_state_enc, _ := st.Get([]byte(identifier))
 			var s_state *core.DEState
 			switch tx.TxType {
