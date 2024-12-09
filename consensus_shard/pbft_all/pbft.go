@@ -6,7 +6,9 @@ import (
 	"blockEmulator/chain"
 	"blockEmulator/consensus_shard/pbft_all/dataSupport"
 	"blockEmulator/consensus_shard/pbft_all/pbft_log"
-	"blockEmulator/core"
+	// "blockEmulator/core"
+	"blockEmulator/de_mis"
+	// "blockEmulator/de_mis/demis_log"
 	"blockEmulator/message"
 	"blockEmulator/networks"
 	"blockEmulator/params"
@@ -86,7 +88,7 @@ type PbftConsensusNode struct {
 
 // generate a pbft consensus for a node
 func NewPbftNode(shardID, nodeID uint64, pcc *params.ChainConfig, messageHandleType string,
-	deCh chan interface{}, txCh chan *core.Transaction) *PbftConsensusNode {
+	deCh chan interface{}, deNode *de_mis.DENode) *PbftConsensusNode {
 	p := new(PbftConsensusNode)
 	p.ip_nodeTable = params.IPmap_nodeTable
 	p.node_nums = pcc.Nodes_perShard
@@ -99,7 +101,7 @@ func NewPbftNode(shardID, nodeID uint64, pcc *params.ChainConfig, messageHandleT
 	if err != nil {
 		log.Panic(err)
 	}
-	p.CurChain, err = chain.NewBlockChain(pcc, p.db, txCh)
+	p.CurChain, err = chain.NewBlockChain(pcc, p.db, deNode)
 	if err != nil {
 		log.Panic("cannot new a blockchain")
 	}
@@ -166,7 +168,7 @@ func NewPbftNode(shardID, nodeID uint64, pcc *params.ChainConfig, messageHandleT
 		}
 		p.ohm = &RawRelayOutsideModule{
 			pbftNode: p,
-			deCh:  deCh,
+			deCh:     deCh,
 		}
 	}
 

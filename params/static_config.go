@@ -36,4 +36,5 @@ var (
 	Children 	   	 = "children"
 	Sibling  	     = "sibling"
 	Parent           = "parent"
+	Type0            = "type0"
 )

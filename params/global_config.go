@@ -55,6 +55,7 @@ var (
 var (
 	CacheEnable = true // 1: enable cache, 0: disable cache
 	CacheSize   = 1000  // The size of cache
+	Types       = []string{"type1"}
 )
 
 // read from file
@@ -86,6 +87,7 @@ type globalConfig struct {
 
 	CacheEnable bool `json:"CacheEnable"`
 	CacheSize   int  `json:"CacheSize"`
+	Types       []string `json:"Types"`
 }
 
 func ReadConfigFile() {
@@ -139,4 +141,5 @@ func ReadConfigFile() {
 	// de-mis params
 	CacheEnable = config.CacheEnable
 	CacheSize   = config.CacheSize
+	Types       = config.Types
 }

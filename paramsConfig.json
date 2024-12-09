@@ -25,6 +25,7 @@
   "JitterRange": -1,
   "Bandwidth":10000000,
 
-  "CacheEnable" : false,
-  "CacheSize" : 1000
+  "CacheEnable" : true,
+  "CacheSize" : 2,
+  "Types": ["type1"]
 }

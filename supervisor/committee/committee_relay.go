@@ -2,14 +2,14 @@ package committee
 
 import (
 	"blockEmulator/core"
+	"blockEmulator/de_mis/utils"
 	"blockEmulator/message"
-	"blockEmulator/networks"
 	"blockEmulator/params"
 	"blockEmulator/supervisor/signal"
 	"blockEmulator/supervisor/supervisor_log"
+
 	// "blockEmulator/utils"
 	"encoding/csv"
-	"encoding/json"
 	"io"
 	"log"
 	"math/big"
@@ -54,7 +54,7 @@ func data2tx(data []string, nonce uint64) (*core.Transaction, bool) {
 }
 
 func data2Detx(data []string, nonce uint64) (*core.Transaction, bool) {
-	tx := core.NewDeTransaction(data[1], data[2], nonce, time.Now(), data[0], data[3], data[4], data[5], data[6], []byte(data[7]))
+	tx := core.NewDeTransaction(data[1], data[2], nonce, time.Now(), data[0], data[3], data[4], data[5], data[6], []byte(data[7]), data[8], data[9])
 	return tx, true
 }
 
@@ -73,12 +73,10 @@ func (rthm *RelayCommitteeModule) txSending(txlist []*core.Transaction) {
 					ToShardID: sid,
 				}
 				// rthm.sl.Slog.Printf("ywb txSending txs 0 : %v \n", it.Txs[0])
-				itByte, err := json.Marshal(it)
-				if err != nil {
-					log.Panic(err)
+				if len(it.Txs) > 0 {
+					utils.WriteMsg(it, message.CInject, rthm.IpNodeTable[sid][0])
 				}
-				send_msg := message.MergeMessage(message.CInject, itByte)
-				go networks.TcpDial(send_msg, rthm.IpNodeTable[sid][0])
+
 			}
 			sendToShard = make(map[uint64][]*core.Transaction)
 			time.Sleep(time.Second)
@@ -105,10 +103,10 @@ func (rthm *RelayCommitteeModule) MsgSendingControl() {
 	txlist := make([]*core.Transaction, 0) // save the txs in this epoch (round)
 
 	// 跳过表头
-    _, err = reader.Read()
-    if err != nil {
-        log.Panic(err)
-    }
+	_, err = reader.Read()
+	if err != nil {
+		log.Panic(err)
+	}
 
 	for {
 		data, err := reader.Read()
@@ -141,5 +139,5 @@ func (rthm *RelayCommitteeModule) MsgSendingControl() {
 // no operation here
 func (rthm *RelayCommitteeModule) HandleBlockInfo(b *message.BlockInfoMsg) {
 	// ywb
-	// rthm.sl.Slog.Printf("received from shard %d in epoch %d.\n", b.SenderShardID, b.Epoch)
+	rthm.sl.Slog.Printf("received from shard %d in epoch %d, bim: %v\n", b.SenderShardID, b.Epoch, b)
 }

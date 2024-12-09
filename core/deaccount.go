@@ -20,12 +20,14 @@ type DEAccount struct {
 // IdentifierRecord 定义标识符记录的数据结构
 type IdentifierRecord struct {
 	Identifier      string    // 标识符
+	Identity        string    // 身份标识符(若存在)
 	Owner           string    // 所有者
 	DataAddress     string    // 数据地址
-	Data            []byte    // 数据
+	Digest          []byte    // 数据
 	MetaDataAddress string    // 元数据
 	Timestamp       time.Time // 时间戳
 	TTL             time.Time // 生存时间
+	Addr            string    // 注册索引节点地址
 }
 
 // AccoutState record the details of an account, it will be saved in status trie
@@ -70,7 +72,7 @@ func (das *DEState) Hash() []byte {
 func (das *DEState) RegisterIdentifier(tx *Transaction) error {
 	das.Identifier = tx.Identifier
 	das.Owner = tx.Sender
-	das.Data = tx.Data
+	das.Digest = tx.Digest
 	das.Timestamp = tx.Time
 	das.DataAddress = tx.DataAddress
 	das.MetaDataAddress = tx.MetaDataAddress

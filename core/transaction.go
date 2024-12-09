@@ -20,6 +20,7 @@ const (
 	Register TransactionType = iota
 	Update
 	Delete
+	CreateUser
 )
 
 func StringToTransactionType(s string) TransactionType {
@@ -30,6 +31,8 @@ func StringToTransactionType(s string) TransactionType {
 		return Update
 	case "Delete":
 		return Delete
+	case "CreateUser":
+		return CreateUser
 	default:
 		return -1
 	}
@@ -58,8 +61,10 @@ type Transaction struct {
 	IsDeTx          bool
 	TxType          TransactionType
 	Identifier      string
+	Prefix          string
+	Suffix          string
 	IType           string
-	Data            []byte
+	Digest          []byte
 	DataAddress     string
 	MetaDataAddress string
 }
@@ -124,7 +129,7 @@ func NewTransaction(sender, recipient string, value *big.Int, nonce uint64, prop
 }
 
 func NewDeTransaction(sender, recipient string, nonce uint64, proposeTime time.Time,
-	txType, identifier, itype, dataAddress, metaDataAddress string, data []byte) *Transaction {
+	txType, identifier, itype, dataAddress, metaDataAddress string, digest []byte, prefix, suffix string) *Transaction {
 
 	tx := &Transaction{
 		Sender:          sender,
@@ -136,7 +141,9 @@ func NewDeTransaction(sender, recipient string, nonce uint64, proposeTime time.T
 		IType:           itype,
 		DataAddress:     dataAddress,
 		MetaDataAddress: metaDataAddress,
-		Data:            data,
+		Prefix:          prefix,
+		Digest:          digest,
+		Suffix:          suffix,
 	}
 
 	hash := sha256.Sum256(tx.Encode())

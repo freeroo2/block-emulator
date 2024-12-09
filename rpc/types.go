@@ -19,3 +19,12 @@ type PrefixQueryReply struct {
 	Prefix string
 	Addr   string
 }
+
+type UnionQueryArgs struct {
+	Identifier string
+	Addr       string
+}
+
+type UnionQueryReply struct {
+	Result []string
+}

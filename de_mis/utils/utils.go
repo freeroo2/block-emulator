@@ -12,6 +12,6 @@ func WriteMsg(msg interface{}, msgType message.MessageType, addr string) {
 	if err != nil {
 		log.Panic(err)
 	}
-	send_msg := message.MergeMessage(message.CPrefixQuery, itByte)
+	send_msg := message.MergeMessage(msgType, itByte)
 	go networks.TcpDial(send_msg, addr)
 }

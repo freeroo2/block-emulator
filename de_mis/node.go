@@ -9,7 +9,6 @@ import (
 	"blockEmulator/params"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -18,7 +17,7 @@ import (
 )
 
 type DENode struct {
-	prefix      string
+	Prefix      string
 	addr        string
 	level       uint64
 	parentMap   map[string]string
@@ -29,7 +28,7 @@ type DENode struct {
 	stopCh      chan struct{}
 
 	// logger
-	dl   *demis_log.DemisLog
+	Dl   *demis_log.DemisLog
 	wait sync.WaitGroup
 
 	// database
@@ -37,16 +36,16 @@ type DENode struct {
 	cache cache.Cache
 }
 
-func NewDENode(shardID, nodeID uint64, cfg *params.DENodeConfig, deCh chan interface{}, txCh chan *core.Transaction) *DENode {
+func NewDENode(shardID, nodeID uint64, cfg *params.DENodeConfig, deCh chan interface{}) *DENode {
 	de := &DENode{
-		prefix:      cfg.Prefix,
+		Prefix:      cfg.Prefix,
 		addr:        cfg.Addr,
 		level:       calculateLevel(cfg.Prefix),
 		parentMap:   cfg.ParentMap,
 		siblingMap:  cfg.SiblingMap,
 		childrenMap: cfg.ChildrenMap,
 		reqCh:       deCh,
-		txCh:        txCh,
+		txCh:        make(chan *core.Transaction, 1024),
 	}
 	dsn := "root:802157@tcp(127.0.0.1:3306)/de_mis?parseTime=true"
 	db, err := sql.Open("mysql", dsn)
@@ -54,10 +53,10 @@ func NewDENode(shardID, nodeID uint64, cfg *params.DENodeConfig, deCh chan inter
 		log.Panic(err)
 	}
 	de.db = db
-	de.dl = demis_log.NewDemisLog(shardID, nodeID)
+	de.Dl = demis_log.NewDemisLog(shardID, nodeID)
 
 	if params.CacheEnable {
-		de.cache = cache.NewSieve(params.CacheSize)
+		de.cache = cache.NewSieve(params.CacheSize, shardID, nodeID)
 	}
 	return de
 }
@@ -72,33 +71,36 @@ func (de *DENode) Stop() {
 	close(de.stopCh)
 }
 
+func (de *DENode) RecvTx(tx *core.Transaction) {
+	de.txCh <- tx
+}
+
 func (de *DENode) process() {
 	defer de.wait.Done()
 
 	for {
 		select {
 		case msg := <-de.reqCh:
-			de.dl.Dlog.Printf("Received message: %v", msg)
+			de.Dl.Dlog.Printf("Received message: %v", msg)
 			// 在这里处理接收到的消息
-			// switch data := msg.(type) {
-			// case *message.PrefixQueryMessage:
-			// 	de.handlePrefixQuery(data)
-			// case *message.QueryMessage:
-			// 	de.handleQuery(data)
-			// }
-			de.handlePrefixQuery(msg.(*message.PrefixQueryMessage))
+			switch data := msg.(type) {
+			case *message.PrefixQueryMessage:
+				de.handlePrefixQuery(data)
+			case *message.UnionQueryMessage:
+				go de.handleUnionQuery(data)
+			}
 		case tx := <-de.txCh:
-			de.dl.Dlog.Printf("Received transaction: %v", tx)
+			// de.Dl.Dlog.Printf("Received transaction: %v", tx)
 			switch tx.TxType {
 			case core.Register:
-				err := de.insertTx(tx) // todo  type --> table
-				if err != nil {
-					de.dl.Dlog.Printf("Error inserting transaction: %v", err)
-				}
+				// err := de.insertTx(tx) // todo  type --> table
+				// if err != nil {
+				// 	de.Dl.Dlog.Printf("Error inserting transaction: %v", err)
+				// }
 			}
 
 		case <-de.stopCh:
-			de.dl.Dlog.Printf("Stopping process goroutine")
+			de.Dl.Dlog.Printf("Stopping process goroutine")
 			return
 		}
 	}
@@ -127,39 +129,6 @@ func (de *DENode) process() {
 //     }
 // }
 
-func (de *DENode) insertTx(tx *core.Transaction) error {
-	// 插入交易到数据库的示例
-	query := fmt.Sprintf(`INSERT INTO t_%s (identifier, username, registration_time, expiration_time, data_address, metadata_address, data) VALUES (?, ?, ?, ?, ?, ?, ?)`, tx.IType)
-	_, err := de.db.Exec(query, tx.Identifier, tx.Sender, tx.Time, nil, tx.DataAddress, tx.MetaDataAddress, tx.Data)
-	return err
-}
-
-func (de *DENode) queryByIdentifier(typ, identifier string) (*core.IdentifierRecord, error) {
-	query := fmt.Sprintf(`SELECT identifier, username, registration_time, expiration_time, data_address, metadata_address, data FROM t_%s WHERE identifier = ?`, typ)
-	row := de.db.QueryRow(query, identifier)
-
-	var identifierResult, username, dataAddress, metadataAddress string
-	var registrationTime, expirationTime sql.NullTime
-	var data []byte
-
-	err := row.Scan(&identifierResult, &username, &registrationTime, &expirationTime, &dataAddress, &metadataAddress, &data)
-	if err != nil {
-		return nil, err
-	}
-
-	record := &core.IdentifierRecord{
-		Identifier:      identifierResult,
-		Owner:           username,
-		Data:            data,
-		DataAddress:     dataAddress,
-		MetaDataAddress: metadataAddress,
-		Timestamp:       registrationTime.Time,
-		TTL:             expirationTime.Time,
-	}
-
-	return record, nil
-}
-
 func (de *DENode) handlePrefixQuery(msg *message.PrefixQueryMessage) {
 	switch msg.Type {
 	case message.REQUEST:
@@ -178,67 +147,89 @@ func (de *DENode) handlePrefixQuery(msg *message.PrefixQueryMessage) {
 }
 
 func (de *DENode) handleFirstQuery(req *message.PrefixQueryMessage) {
+	msg := *req
+
 	if params.CacheEnable {
-		if record, exists := de.cache.Get(req.Prefix); exists {
-			resp := message.PrefixQueryMessage{Identifier: req.Identifier, Record: *(record.(*core.IdentifierRecord))} // todo
+		de.Dl.Dlog.Println("ywb 查询cache")
+		if value, exists := de.cache.Get(req.Identifier); exists {
+			var nextAddr string
+			switch data := value.(type) {
+			case *core.IdentifierRecord:
+				msg.Record = *data
+				nextAddr = params.IPmap_nodeTable[params.SupervisorShard][0]
+			case string:
+				msg.Status = message.PREFIX_QUERY_FORWARD
+				nextAddr = data
+			}
+
 			// tcp send
-			de.dl.Dlog.Printf("ywb cache hit, resp to supervisor : %s\n", record)
-			utils.WriteMsg(resp, message.CPrefixQuery, params.IPmap_nodeTable[params.SupervisorShard][0])
+			de.Dl.Dlog.Printf("ywb cache hit, send msg to : %v\n", value)
+			utils.WriteMsg(msg, message.CPrefixQuery, nextAddr)
 			return
 		}
 	}
 
 	// startTime := time.Now()
-	if req.Prefix == de.prefix {
-		resp := message.PrefixQueryMessage{Type: message.RESPONSE, Status: message.FINISH,
-			Prefix: req.Prefix, Identifier: req.Identifier, TargetAddress: de.addr}
+	if req.Prefix == de.Prefix {
+		msg.Type = message.RESPONSE
+		msg.Status = message.FINISH
 		record, err := de.queryHelper(req.Identifier)
 		if err != nil {
-			de.dl.Dlog.Fatalf("Error querying identifier: %s", err)
+			de.Dl.Dlog.Fatalf("Error querying identifier: %s", err)
 		} else {
-			resp.Record = *record
+			msg.Record = *record
 		}
 
 		// tcp send
-		de.dl.Dlog.Printf("ywb sending finish to supervisor : %s\n", params.IPmap_nodeTable[params.SupervisorShard][0])
-		utils.WriteMsg(resp, message.CPrefixQuery, params.IPmap_nodeTable[params.SupervisorShard][0])
+		de.Dl.Dlog.Printf("ywb sending finish to supervisor : %s\n", params.IPmap_nodeTable[params.SupervisorShard][0])
+		utils.WriteMsg(msg, message.CPrefixQuery, params.IPmap_nodeTable[params.SupervisorShard][0])
 		return
 	}
 
 	nextAddr := de.findNextAddr(req.Prefix)
-	nextReq := message.PrefixQueryMessage{Type: message.REQUEST, Status: message.PREFIX_QUERY_FORWARD,
-		Prefix: req.Prefix, Identifier: req.Identifier, ProxyAddress: de.addr}
+	msg.Type = message.REQUEST
+	msg.Status = message.PREFIX_QUERY_FORWARD
 	if nextAddr != "" {
 		// tcp send
-		de.dl.Dlog.Printf("ywb sending forward prefix query to %s \n", nextAddr)
-		utils.WriteMsg(nextReq, message.CPrefixQuery, nextAddr)
+		de.Dl.Dlog.Printf("ywb sending forward prefix query to %s \n", nextAddr)
+		utils.WriteMsg(msg, message.CPrefixQuery, nextAddr)
 	} else {
 		// error todo
 	}
 }
 
 func (de *DENode) handleRelayQuery(msg *message.PrefixQueryMessage) {
+	resp := *msg
 	if params.CacheEnable {
-		if record, exists := de.cache.Get(msg.Prefix); exists {
-			resp := message.PrefixQueryMessage{Identifier: msg.Identifier, Record: *(record.(*core.IdentifierRecord))} // todo
+		if value, exists := de.cache.Get(msg.Identifier); exists {
+			resp.Type = message.RESPONSE
+			switch data := value.(type) {
+			case *core.IdentifierRecord:
+				resp.Status = message.FINISH
+				resp.Record = *data
+			case string:
+				resp.Status = message.PREFIX_QUERY_FORWARD
+				resp.TargetAddress = data
+			}
 			// tcp send
-			de.dl.Dlog.Printf("ywb cache hit, resp to proxy node : %s\n", record)
+			de.Dl.Dlog.Printf("ywb cache hit, resp to proxy node : %v\n", value)
 			utils.WriteMsg(resp, message.CPrefixQuery, msg.ProxyAddress)
 			return
 		}
 	}
 
-	if msg.Prefix == de.prefix {
-		resp := message.PrefixQueryMessage{Type: message.RESPONSE, Status: message.FINISH, Prefix: msg.Prefix,
-			Identifier: msg.Identifier, ProxyAddress: msg.ProxyAddress, TargetAddress: de.addr}
+	if msg.Prefix == de.Prefix {
+		resp.Type = message.RESPONSE
+		resp.Status = message.FINISH
+		resp.TargetAddress = de.addr
 		record, err := de.queryHelper(msg.Identifier)
 		if err != nil {
-			de.dl.Dlog.Fatalf("Error querying identifier: %s", err)
+			de.Dl.Dlog.Fatalf("Error querying identifier: %s", err)
 		} else {
 			resp.Record = *record
 		}
 		// tcp send
-		de.dl.Dlog.Printf("ywb sending finish prefix query to proxy node : %s\n", msg.ProxyAddress)
+		de.Dl.Dlog.Printf("ywb sending finish prefix query to proxy node : %s\n", msg.ProxyAddress)
 		utils.WriteMsg(resp, message.CPrefixQuery, msg.ProxyAddress)
 		return
 	}
@@ -246,10 +237,11 @@ func (de *DENode) handleRelayQuery(msg *message.PrefixQueryMessage) {
 	nextAddr := de.findNextAddr(msg.Prefix)
 	if nextAddr != "" {
 		// tcp send back to proxy node
-		resp := message.PrefixQueryMessage{Type: message.RESPONSE, Status: message.PREFIX_QUERY_FORWARD,
-			Prefix: msg.Prefix, Identifier: msg.Identifier, ProxyAddress: de.addr, TargetAddress: nextAddr}
+		resp.Type = message.RESPONSE
+		resp.Status = message.PREFIX_QUERY_FORWARD
+		resp.TargetAddress = nextAddr
 
-		de.dl.Dlog.Printf("ywb sending forward prefix resp with nextAddr %s  to proxy node %s \n", nextAddr, msg.ProxyAddress)
+		de.Dl.Dlog.Printf("ywb sending forward prefix resp with nextAddr %s  to proxy node %s \n", nextAddr, msg.ProxyAddress)
 		utils.WriteMsg(resp, message.CPrefixQuery, msg.ProxyAddress)
 	} else {
 		// error todo
@@ -274,24 +266,24 @@ func (de *DENode) handlePrefixQueryResp(resp *message.PrefixQueryMessage) {
 	switch resp.Status {
 	case message.PREFIX_QUERY_FORWARD:
 		{
-			de.dl.Dlog.Printf("Received forward response: %v", resp)
+			de.Dl.Dlog.Printf("Received forward response: %v", resp)
 			msg.Type = message.REQUEST
 			msg.Status = message.PREFIX_QUERY_FORWARD
 			nextAddr = resp.TargetAddress
 		}
 	case message.FINISH:
 		{
-			de.dl.Dlog.Printf("Received finish response: %v", resp)
+			de.Dl.Dlog.Printf("Received finish response: %v", resp)
 			// tcp send resp to spv
 			nextAddr = params.IPmap_nodeTable[params.SupervisorShard][0]
 			// cache set todo test
 			if params.CacheEnable {
-				de.cache.Set(resp.Prefix, &resp.Record)
+				de.cache.Set(resp.Identifier, &resp.Record)
 			}
 		}
 	case message.ERROR:
 		{
-			de.dl.Dlog.Printf("Received error response: %v", resp)
+			de.Dl.Dlog.Printf("Received error response: %v", resp)
 			// tcp send resp to spv
 			msg.Type = message.RESPONSE
 			msg.Status = message.ERROR
@@ -299,7 +291,7 @@ func (de *DENode) handlePrefixQueryResp(resp *message.PrefixQueryMessage) {
 		}
 	}
 
-	de.dl.Dlog.Printf("Sending forward prefix response to %s\n", nextAddr)
+	de.Dl.Dlog.Printf("Sending forward prefix response to %s\n", nextAddr)
 
 	utils.WriteMsg(msg, message.CPrefixQuery, nextAddr)
 }
@@ -320,11 +312,11 @@ func calFirstMismatchPos(targetParts, curParts []string) uint64 {
 }
 
 func (de *DENode) findNextAddr(targetPrefix string) string {
-	curParts := strings.Split(de.prefix, ".")
+	curParts := strings.Split(de.Prefix, ".")
 	targetParts := strings.Split(targetPrefix, ".")
 	firstMismatchPos := calFirstMismatchPos(targetParts, curParts)
-	de.dl.Dlog.Printf("Current node prefix: %s, targetPrefix: %s, firstMismatchPos: %d, cur node level %d\n",
-		de.prefix, targetPrefix, firstMismatchPos, de.level)
+	de.Dl.Dlog.Printf("Current node prefix: %s, targetPrefix: %s, firstMismatchPos: %d, cur node level %d\n",
+		de.Prefix, targetPrefix, firstMismatchPos, de.level)
 	// 根据层级关系选择向下一个节点请求
 	targetLevel := calculateLevel(targetPrefix)
 	var nextAddr string = ""
@@ -339,7 +331,7 @@ func (de *DENode) findNextAddr(targetPrefix string) string {
 	} else if firstMismatchPos == de.level {
 		// 向兄弟节点请求
 		nextPrefix := constructPrefix(targetParts, firstMismatchPos)
-		de.dl.Dlog.Printf("下一跳 sibling prefix: %s", nextPrefix)
+		de.Dl.Dlog.Printf("下一跳 sibling prefix: %s", nextPrefix)
 		if addr, exists := de.siblingMap[nextPrefix]; exists {
 			nextAddr = addr
 		}
@@ -347,7 +339,7 @@ func (de *DENode) findNextAddr(targetPrefix string) string {
 	} else {
 		// 向子节点请求
 		nextPrefix := constructPrefix(targetParts, firstMismatchPos)
-		de.dl.Dlog.Printf("下一跳 child prefix: %s", nextPrefix)
+		de.Dl.Dlog.Printf("下一跳 child prefix: %s", nextPrefix)
 		if addr, exists := de.childrenMap[nextPrefix]; exists {
 			nextAddr = addr
 		}
@@ -363,28 +355,81 @@ func constructPrefix(segments []string, mismatchPos uint64) string {
 	return strings.Join(segments[:mismatchPos], ".")
 }
 
+func SplitIdentifier(identifier string) (string, string, string, error) {
+	parts := strings.Split(identifier, "/")
+	if len(parts) != 2 {
+		return "", "", "", errors.New("invalid identifier format:" + identifier)
+	}
+	prefix := parts[0]
+	subParts := strings.Split(parts[1], ":")
+	if len(subParts) != 2 {
+		return "", "", "", errors.New("invalid suffix format:" + parts[1])
+	}
+	typ := subParts[0]
+	suffix := subParts[1]
+	return prefix, typ, suffix, nil
+}
+
 // 查询本地标识符记录，与缓存无关
 func (de *DENode) queryHelper(identifier string) (*core.IdentifierRecord, error) {
 	// 在这里处理接收到的查询消息
-	de.dl.Dlog.Printf("queryHelper received query : %v", identifier)
-	parts := strings.Split(identifier, "/")
-	if len(parts) != 2 {
-		return nil, errors.New("invalid identifier format:" + identifier)
-	}
-	// prefix := parts[0]
-	suffix := parts[1]
-	subParts := strings.Split(suffix, ":")
-	if len(subParts) != 2 {
-		return nil, errors.New("invalid suffix format:" + suffix)
-	}
-	typ := subParts[0]
+	de.Dl.Dlog.Printf("queryHelper received query : %v", identifier)
 
+	_, typ, _, _ := SplitIdentifier(identifier)
 	record, err := de.queryByIdentifier(typ, identifier)
 	if err != nil {
 		return nil, err
 	}
 
-	de.dl.Dlog.Printf("Query result: %v", record)
+	de.Dl.Dlog.Printf("Query result: %v", record)
 	result := record
 	return result, nil
+}
+
+func (de *DENode) handleUnionQuery(msg *message.UnionQueryMessage) {
+	// 在这里处理接收到的查询消息
+	de.Dl.Dlog.Printf("Received query: %v", msg)
+
+	prefix, typ, _, _ := SplitIdentifier(msg.Identifier)
+	if prefix != de.Prefix {
+		// todo forward
+		return
+	}
+
+	res := make([]core.IdentifierRecord, 0)
+	// 查询本地标识符记录
+	if typ == params.Type0 {
+		if exist, _ := de.isIdentifierExist(typ, msg.Identifier); exist {
+			for _, t := range params.Types {
+				record, err := de.queryByIdentity(t, msg.Identifier)
+				if err != nil {
+					de.Dl.Dlog.Printf("Error querying identifier: %v", err)
+					continue
+				}
+				res = append(res, *record)
+			}
+		}
+	} else {
+		record, err := de.queryByIdentifier(typ, msg.Identifier)
+		if err != nil {
+			de.Dl.Dlog.Printf("Error querying identifier: %v", err)
+			return
+		}
+		res = append(res, *record)
+		identity := record.Identity
+		for _, t := range params.Types {
+			if t != typ {
+				record, err := de.queryByIdentity(t, identity)
+				if err != nil {
+					de.Dl.Dlog.Printf("Error querying identifier: %v", err)
+					continue
+				}
+				res = append(res, *record)
+			}
+		}
+	}
+	de.Dl.Dlog.Printf("Query result: %v", res)
+	// tcp send
+	msg.Result = res
+	utils.WriteMsg(msg, message.CUnionQuery, params.IPmap_nodeTable[params.SupervisorShard][0])
 }

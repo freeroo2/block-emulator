@@ -5,6 +5,7 @@ package chain
 
 import (
 	"blockEmulator/core"
+	"blockEmulator/de_mis"
 	"blockEmulator/params"
 	"blockEmulator/storage"
 	"blockEmulator/utils"
@@ -33,6 +34,7 @@ type BlockChain struct {
 	PartitionMap map[string]uint64   // the partition map which is defined by some algorithm can help account parition
 	pmlock       sync.RWMutex
 	txCh         chan *core.Transaction // ywb 将执行的交易传给DENode
+	deNode       *de_mis.DENode
 }
 
 // Get the transaction root, this root can be used to check the transactions
@@ -96,13 +98,19 @@ func (bc *BlockChain) GetUpdateStatusTrie(txs []*core.Transaction) common.Hash {
 	fmt.Println("ywb 执行de内置合约")
 	for i, tx := range txs {
 		if tx.IsDeTx {
-			s_state_enc, _ := st.Get([]byte(tx.Identifier))
+			identifier := bc.deNode.BuildIdentifier(tx.Prefix, tx.IType, tx.Suffix)
+			tx.Identifier = identifier
+			fmt.Printf("ywb 执行de内置合约，identifier: %s\n", identifier)
+			s_state_enc, _ := st.Get([]byte(identifier))
 			var s_state *core.DEState
 			switch tx.TxType {
 			case core.Register:
 				if s_state_enc == nil {
 					s_state = &core.DEState{
 						Nonce: uint64(i),
+					}
+					if err := bc.deNode.HandleRegister(tx); err != nil {
+						bc.deNode.Dl.Dlog.Printf("Error in registering identifier: %s", err)
 					}
 					s_state.RegisterIdentifier(tx)
 				} else {
@@ -118,7 +126,7 @@ func (bc *BlockChain) GetUpdateStatusTrie(txs []*core.Transaction) common.Hash {
 			}
 			st.Update([]byte(tx.Identifier), s_state.Encode())
 			cnt++
-            bc.txCh <- tx
+            bc.deNode.RecvTx(tx)
 			continue
 		}
 		// fmt.Printf("tx %d: %s, %s\n", i, tx.Sender, tx.Recipient)
@@ -288,7 +296,7 @@ func (bc *BlockChain) AddBlock(b *core.Block) {
 
 // new a blockchain.
 // the ChainConfig is pre-defined to identify the blockchain; the db is the status trie database in disk
-func NewBlockChain(cc *params.ChainConfig, db ethdb.Database, txCh chan *core.Transaction) (*BlockChain, error) {
+func NewBlockChain(cc *params.ChainConfig, db ethdb.Database, deNode *de_mis.DENode) (*BlockChain, error) {
 	fmt.Println("Generating a new blockchain", db)
 	chainDBfp := params.DatabaseWrite_path + fmt.Sprintf("chainDB/S%d_N%d", cc.ShardID, cc.NodeID)
 	bc := &BlockChain{
@@ -297,7 +305,7 @@ func NewBlockChain(cc *params.ChainConfig, db ethdb.Database, txCh chan *core.Tr
 		Txpool:       core.NewTxPool(),
 		Storage:      storage.NewStorage(chainDBfp, cc),
 		PartitionMap: make(map[string]uint64),
-		txCh:         txCh,
+		deNode:       deNode,
 	}
 	curHash, err := bc.Storage.GetNewestBlockHash()
 	if err != nil {

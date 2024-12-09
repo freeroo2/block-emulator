@@ -2,6 +2,7 @@ package chain
 
 import (
 	"blockEmulator/core"
+	"blockEmulator/message"
 	"blockEmulator/utils"
 	"bytes"
 	"errors"
@@ -12,20 +13,9 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
-type TxProofResult struct {
-	Found       bool
-	BlockHash   []byte
-	TxHash      []byte
-	TxRoot      []byte
-	BlockHeight uint64
-	KeyList     [][]byte
-	ValueList   [][]byte
-	Error       string
-}
-
 // Generate proof for the tx which hash is txHash.
 // Find all blocks in this chain.
-func (bc *BlockChain) TxProofGenerate(txHash []byte) TxProofResult {
+func (bc *BlockChain) TxProofGenerate(txHash []byte) message.TxProofResult {
 	nowblockHash := bc.CurrentBlock.Hash
 	nowheight := bc.CurrentBlock.Header.Number
 
@@ -33,7 +23,7 @@ func (bc *BlockChain) TxProofGenerate(txHash []byte) TxProofResult {
 		// get a block from db
 		block, err1 := bc.Storage.GetBlock(nowblockHash)
 		if err1 != nil {
-			return TxProofResult{
+			return message.TxProofResult{
 				Found:  false,
 				TxHash: txHash,
 				Error:  err1.Error(),
@@ -47,7 +37,7 @@ func (bc *BlockChain) TxProofGenerate(txHash []byte) TxProofResult {
 		nowblockHash = block.Header.ParentBlockHash
 	}
 
-	return TxProofResult{
+	return message.TxProofResult{
 		Found:  false,
 		TxHash: txHash,
 		Error:  errors.New("cannot find this tx").Error(),
@@ -55,11 +45,11 @@ func (bc *BlockChain) TxProofGenerate(txHash []byte) TxProofResult {
 }
 
 // Make Tx proof on a certain block.
-func TxProofGenerateOnTheBlock(txHash []byte, block *core.Block) TxProofResult {
+func TxProofGenerateOnTheBlock(txHash []byte, block *core.Block) message.TxProofResult {
 	// If no value in bloom filter, then the tx must not be in this block
 	bitMapIdxofTx := utils.ModBytes(txHash, 2048)
 	if !block.Header.Bloom.Test(bitMapIdxofTx) {
-		return TxProofResult{
+		return message.TxProofResult{
 			Found:  false,
 			TxHash: txHash,
 			Error:  errors.New("cannot find this tx").Error(),
@@ -74,7 +64,7 @@ func TxProofGenerateOnTheBlock(txHash []byte, block *core.Block) TxProofResult {
 		transactionTree.Update(tx.TxHash, []byte{0})
 	}
 	if !bytes.Equal(transactionTree.Hash().Bytes(), block.Header.TxRoot) {
-		return TxProofResult{
+		return message.TxProofResult{
 			Found:  false,
 			TxHash: txHash,
 			Error:  fmt.Errorf("tx root mismatch in height %d", block.Header.Number).Error(),
@@ -90,7 +80,7 @@ func TxProofGenerateOnTheBlock(txHash []byte, block *core.Block) TxProofResult {
 			keylist = append(keylist, it.Key())
 			valuelist = append(valuelist, it.Value())
 		}
-		return TxProofResult{
+		return message.TxProofResult{
 			Found:       true,
 			BlockHash:   block.Hash,
 			TxHash:      txHash,
@@ -100,15 +90,15 @@ func TxProofGenerateOnTheBlock(txHash []byte, block *core.Block) TxProofResult {
 			ValueList:   valuelist,
 		}
 	}
-	return TxProofResult{
+	return message.TxProofResult{
 		Found:  false,
 		TxHash: txHash,
 		Error:  errors.New("cannot find this tx").Error(),
 	}
 }
 
-func TxProofBatchGenerateOnBlock(txHashes [][]byte, block *core.Block) []TxProofResult {
-	txProofs := make([]TxProofResult, len(txHashes))
+func TxProofBatchGenerateOnBlock(txHashes [][]byte, block *core.Block) []message.TxProofResult {
+	txProofs := make([]message.TxProofResult, len(txHashes))
 	// check the tx trie first.
 	// check the correctness of this tx Trie
 	triedb := trie.NewDatabase(rawdb.NewMemoryDatabase())
@@ -118,7 +108,7 @@ func TxProofBatchGenerateOnBlock(txHashes [][]byte, block *core.Block) []TxProof
 	}
 	if !bytes.Equal(transactionTree.Hash().Bytes(), block.Header.TxRoot) {
 		for i := 0; i < len(txHashes); i++ {
-			txProofs[i] = TxProofResult{
+			txProofs[i] = message.TxProofResult{
 				Found:  false,
 				TxHash: txHashes[i],
 				Error:  fmt.Errorf("tx root mismatch in height %d", block.Header.Number).Error(),
@@ -130,7 +120,7 @@ func TxProofBatchGenerateOnBlock(txHashes [][]byte, block *core.Block) []TxProof
 	for idx, txHash := range txHashes {
 		bitMapIdxofTx := utils.ModBytes(txHash, 2048)
 		if !block.Header.Bloom.Test(bitMapIdxofTx) {
-			txProofs[idx] = TxProofResult{
+			txProofs[idx] = message.TxProofResult{
 				Found:  false,
 				TxHash: txHash,
 				Error:  errors.New("cannot find this tx").Error(),
@@ -146,7 +136,7 @@ func TxProofBatchGenerateOnBlock(txHashes [][]byte, block *core.Block) []TxProof
 				keylist = append(keylist, it.Key())
 				valuelist = append(valuelist, it.Value())
 			}
-			txProofs[idx] = TxProofResult{
+			txProofs[idx] = message.TxProofResult{
 				Found:       true,
 				BlockHash:   block.Hash,
 				TxHash:      txHash,
@@ -156,7 +146,7 @@ func TxProofBatchGenerateOnBlock(txHashes [][]byte, block *core.Block) []TxProof
 				ValueList:   valuelist,
 			}
 		} else {
-			txProofs[idx] = TxProofResult{
+			txProofs[idx] = message.TxProofResult{
 				Found:  false,
 				TxHash: txHash,
 				Error:  errors.New("cannot find this tx").Error(),
@@ -166,7 +156,7 @@ func TxProofBatchGenerateOnBlock(txHashes [][]byte, block *core.Block) []TxProof
 	return txProofs
 }
 
-func TxProofVerify(txHash []byte, proof *TxProofResult) (bool, error) {
+func TxProofVerify(txHash []byte, proof *message.TxProofResult) (bool, error) {
 	if !proof.Found {
 		return false, errors.New("the result shows not found")
 	}

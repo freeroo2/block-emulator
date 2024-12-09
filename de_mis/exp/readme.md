@@ -1,0 +1,1 @@
+batchDataNum： tx数达到该值，就调用txSending函数发送交易

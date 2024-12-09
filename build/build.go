@@ -2,7 +2,6 @@ package build
 
 import (
 	"blockEmulator/consensus_shard/pbft_all"
-	"blockEmulator/core"
 	demis "blockEmulator/de_mis"
 	"blockEmulator/networks"
 	"blockEmulator/params"
@@ -54,14 +53,17 @@ func initDENodeConfig(nid, sid uint64) *params.DENodeConfig {
 	parentMap := domainMap[params.Parent]
 	siblingMap := domainMap[params.Sibling]
 	childrenMap := domainMap[params.Children]
+	ipMap := readIpTable("./ipTable.json")
 	pcc := &params.DENodeConfig{
 		Prefix:       domainMap[params.Prefix][params.CurPrefix],
-		Addr:         params.IPmap_nodeTable[sid][nid],
+		Addr:         ipMap[sid][nid],
 		ParentMap:    parentMap,
 		SiblingMap:   siblingMap,
 		ChildrenMap:  childrenMap,
 	}
 	fmt.Println(pcc)
+	fmt.Println("Prefix: ", pcc.Prefix)
+	fmt.Println("Addr: ", pcc.Addr)
 	return pcc
 }
 
@@ -86,9 +88,10 @@ func BuildSupervisor(nnm, snm uint64) {
 func BuildNewPbftNode(nid, nnm, sid, snm uint64) {
 	methodID := params.ConsensusMethod
 	deReqCh := make(chan interface{}, 1024)
-	txCh := make(chan *core.Transaction, 1024)
-	worker := pbft_all.NewPbftNode(sid, nid, initConfig(nid, nnm, sid, snm), params.CommitteeMethod[methodID], deReqCh, txCh)
-	deNode := demis.NewDENode(sid, nid, initDENodeConfig(nid, sid), deReqCh, txCh)
+	// txCh := make(chan *core.Transaction, 1024)
+	deNode := demis.NewDENode(sid, nid, initDENodeConfig(nid, sid), deReqCh)
+	worker := pbft_all.NewPbftNode(sid, nid, initConfig(nid, nnm, sid, snm), params.CommitteeMethod[methodID], deReqCh, deNode)
+	
 	// ywb 这里nid是本节点的id，sid是本节点所在分片的id，可以根据这个去读取指定目录的domain的配置文件
 	go worker.TcpListen()
 

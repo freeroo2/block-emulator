@@ -26,8 +26,9 @@ const (
 	CBlockInfo MessageType = "BlockInfo"
 	CSeqIDinfo MessageType = "SequenceID"
 
-	CResolve         MessageType = "Resolve"
-	CPrefixQuery     MessageType = "PrefixQuery"
+	CResolve     MessageType = "Resolve"
+	CPrefixQuery MessageType = "PrefixQuery"
+	CUnionQuery  MessageType = "UnionQuery"
 )
 
 var (
@@ -117,7 +118,7 @@ const (
 // }
 
 type PrefixQueryMessage struct {
-	// MsgID   string
+	MsgID         string
 	Prefix        string
 	Identifier    string
 	Status        QueryProcessStatus
@@ -125,12 +126,14 @@ type PrefixQueryMessage struct {
 	ProxyAddress  string
 	TargetAddress string
 	Record        core.IdentifierRecord
+	StartTime     time.Time
 }
 
-type QueryMessage struct {
-	// MsgID      string
+type UnionQueryMessage struct {
+	MsgID      string
 	Identifier string
-	Result     core.IdentifierRecord
+	Result     []core.IdentifierRecord
+	StartTime     time.Time
 }
 
 // data sent to the supervisor
